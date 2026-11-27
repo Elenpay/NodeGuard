@@ -62,8 +62,11 @@ public interface IWithdrawalRequestService
     /// which signs and broadcasts. On failure the replaced request is put back to OnChainConfirmationPending and the
     /// exception is rethrown; the caller decides what happens to the request itself.
     /// </summary>
+    /// <param name="requestId">The hot-wallet request to execute.</param>
+    /// <param name="beforeScheduling">Runs once the template PSBT exists and the replaced request is marked, right
+    /// before the job is scheduled, so callers can audit the request ahead of the job's own audits.</param>
     /// <returns>The template PSBT; its global transaction hash is the txid that will be broadcast.</returns>
-    Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId);
+    Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId, Func<Task>? beforeScheduling = null);
 
     /// <summary>
     /// Marks the request replaced by <paramref name="replacement"/> as Bumped (fee bump) or Cancelled (RBF cancellation).
@@ -229,8 +232,15 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         }
         else
         {
+            // A changeless request sends its UTXOs in full. Older requests created over gRPC kept the amount the
+            // caller declared instead, so the replacement takes the UTXO total rather than copying it.
+            var lockedAmount = Money.Satoshis(lockedUtxos.Sum(u => u.SatsAmount)).ToDecimal(MoneyUnit.BTC);
             replacementDestinations = destinations
-                .Select(d => new WalletWithdrawalRequestDestination { Address = d.Address, Amount = d.Amount })
+                .Select(d => new WalletWithdrawalRequestDestination
+                {
+                    Address = d.Address,
+                    Amount = original.Changeless ? lockedAmount : d.Amount
+                })
                 .ToList();
         }
 
@@ -246,6 +256,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
             RequestMetadata = original.RequestMetadata,
             // The replacement represents the same external request, so callers can keep tracking it by reference id.
             ReferenceId = original.ReferenceId,
+            CoinSelectionStrategy = original.CoinSelectionStrategy,
             BumpingWalletWithdrawalRequestId = original.Id,
             IsRbfCancellation = cancellation,
             WalletId = original.WalletId,
@@ -290,7 +301,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         return await _walletWithdrawalRequestRepository.GetById(replacement.Id) ?? replacement;
     }
 
-    public async Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId)
+    public async Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId, Func<Task>? beforeScheduling = null)
     {
         var request = await _walletWithdrawalRequestRepository.GetById(requestId)
                       ?? throw new InvalidOperationException($"Withdrawal request {requestId} not found");
@@ -330,6 +341,11 @@ public class WithdrawalRequestService : IWithdrawalRequestService
             if (request.BumpingWalletWithdrawalRequestId != null)
             {
                 await MarkOriginalAsReplacedAsync(request);
+            }
+
+            if (beforeScheduling != null)
+            {
+                await beforeScheduling();
             }
 
             var scheduler = await _schedulerFactory.GetScheduler();

@@ -45,10 +45,10 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0   # full history so the filter can diff push events too
-      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+      - uses: dorny/paths-filter@v4.0.3
         id: filter
         with:
           filters: |
@@ -67,8 +67,12 @@ jobs:
               - 'global.json'
               - 'nuget.config'
               - 'NuGet.config'
+              # NSpark (the Lunar-Rails/nspark fork, git submodule), which the Spark client is built from
+              - 'vendor/**'
+              - '.gitmodules'
               # build/e2e harness that exercises the above
               - 'src/Dockerfile'
+              - '.dockerignore'
               - 'docker-compose.yml'
               - 'docker/**'
               - '.github/workflows/dotnet.yml'
@@ -79,14 +83,34 @@ jobs:
     if: ${{ needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7.0.1
+      - name: Check out the NSpark submodule
+        run: git submodule update --init vendor/nspark
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: '10.0.x'
       - name: Restore
         run: dotnet restore
       - name: Unit tests (excludes e2e)
         run: dotnet test --filter "Category!=E2E"
+      - name: No model changes without a migration
+        # Out of process on purpose: under a test host ApplicationDbContext builds a test-only model
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.2
+          dotnet ef migrations has-pending-model-changes --project src --context ApplicationDbContext
+
+  # On PRs the image is otherwise only built by the opt-in e2e job: build it here so a broken
+  # Dockerfile or build context (e.g. the NSpark submodule) fails the PR, without pushing anything.
+  image-build-check:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Check out the NSpark submodule
+        run: git submodule update --init vendor/nspark
+      - name: Build the image
+        run: docker build -f src/Dockerfile .
 
   e2e-test:
     needs: changes
@@ -100,16 +124,30 @@ jobs:
           || github.event_name == 'workflow_dispatch'
           || startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # The Spark swap-out E2E always runs too, against the local Spark network (spark profile)
+    env:
+      COMPOSE_PROFILES: polar,e2e,spark
+      SPARK_ENABLED: "true"
+      SPARK_E2E: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
+      - name: Check out the NSpark submodule
+        run: git submodule update --init vendor/nspark
+      - name: Log in to GHCR (Spark network images)
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run e2e tests (one stack, one ordered pass)
-        # Clean slate first (DbInitializer only funds the dev wallets on an empty DB), then run the E2E suite (Category=E2E) in one pass: rebalance, fee-engine smoke, fee-engine flow, plus the wallet/UTXO e2e tests.
+        # Clean slate first (DbInitializer only funds the dev wallets on an empty DB), then run the E2E suite (Category=E2E) in one pass: rebalance, fee-engine smoke, fee-engine flow, Spark swap-out, plus the wallet/UTXO e2e tests.
         run: |
-          COMPOSE_PROFILES=polar,e2e docker compose -f docker-compose.yml down -v --remove-orphans || true
-          COMPOSE_PROFILES=polar,e2e docker compose -f docker-compose.yml run --rm --build e2e-runner
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
+          docker compose -f docker-compose.yml run --rm --build e2e-runner
       - name: Tear down
         if: always()
-        run: COMPOSE_PROFILES=polar,e2e docker compose -f docker-compose.yml down -v --remove-orphans
+        run: docker compose -f docker-compose.yml down -v --remove-orphans
 
   # Build + push the image ONLY after unit + e2e pass, on: pushes to main/master (with relevant
   # changes) and semver tag pushes (releases). Never on PRs or manual dispatch — those only test.
@@ -128,13 +166,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
+
+      - name: Check out the NSpark submodule
+        run: git submodule update --init vendor/nspark
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.12.0
 
       - name: Log into the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -142,7 +183,7 @@ jobs:
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # Branch pushes → branch name (+ `latest` on the default branch). Semver tag pushes →
@@ -158,7 +199,7 @@ jobs:
             actions_run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Build and push the Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.19.2
         with:
           context: .
           file: src/Dockerfile
@@ -169,9 +210,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Scan SBOM
-        uses: anchore/scan-action@3343887d815d7b07465f6fdcd395bd66508d486a # v3.6.4
+        uses: anchore/scan-action@v7.4.2
         with:
-          image: ${{ steps.meta.outputs.tags }}
+          # One reference: meta's tags output is newline-separated, and grype rejects the whole list.
+          image: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           add-cpes-if-none: true
           output-format: table
           severity-cutoff: critical

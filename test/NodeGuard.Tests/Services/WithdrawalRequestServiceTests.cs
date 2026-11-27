@@ -126,6 +126,47 @@ public class WithdrawalRequestServiceTests
             BitcoinRequestType.WalletWithdrawal), Times.Once);
     }
 
+    /// <summary>
+    /// A changeless request sends its inputs in full. Requests created over gRPC used to keep the amount the caller
+    /// declared, so their bump takes the amount of the inputs instead of copying it.
+    /// </summary>
+    [Fact]
+    public async Task CreateBumpRequestAsync_ChangelessOriginal_TakesTheAmountOfItsInputs()
+    {
+        SetupOriginal(HotWallet(), changeless: true, inputSats: 10_000_000);
+
+        var bump = await CreateService().CreateBumpRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        bump.WalletWithdrawalRequestDestinations.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new { Address = DestinationAddress, Amount = 0.1m });
+    }
+
+    /// <summary>
+    /// The replacement stands in for the same original request, so it keeps the requested coin selection strategy
+    /// the way it keeps RequestMetadata and ReferenceId. Nothing reads the field yet.
+    /// </summary>
+    [Fact]
+    public async Task CreateBumpRequestAsync_CarriesTheCoinSelectionStrategyOfTheOriginal()
+    {
+        var original = SetupOriginal(HotWallet());
+        original.CoinSelectionStrategy = CoinSelectionStrategy.BiggestFirst;
+
+        var bump = await CreateService().CreateBumpRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        bump.CoinSelectionStrategy.Should().Be(CoinSelectionStrategy.BiggestFirst);
+    }
+
+    [Fact]
+    public async Task CreateCancelRequestAsync_CarriesTheCoinSelectionStrategyOfTheOriginal()
+    {
+        var original = SetupOriginal(HotWallet());
+        original.CoinSelectionStrategy = CoinSelectionStrategy.ClosestToTargetFirst;
+
+        var cancel = await CreateService().CreateCancelRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        cancel.CoinSelectionStrategy.Should().Be(CoinSelectionStrategy.ClosestToTargetFirst);
+    }
+
     [Fact]
     public async Task CreateBumpRequestAsync_ColdWallet_CreatesTheBumpPendingForApprovers()
     {
@@ -437,6 +478,45 @@ public class WithdrawalRequestServiceTests
         await act.Should().ThrowAsync<NoUTXOsAvailableException>();
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
         _scheduler.Verify(x => x.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ScheduleHotWalletWithdrawalAsync_BeforeScheduling_RunsAfterTheTemplateAndBeforeTheJob()
+    {
+        HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending);
+        var events = new List<string>();
+        _bitcoin.Setup(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>()))
+            .Callback(() => events.Add("template"))
+            .ReturnsAsync(EmptyPsbt());
+        _scheduler.Setup(x => x.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()))
+            .Callback(() => events.Add("schedule"))
+            .ReturnsAsync(DateTimeOffset.UtcNow);
+
+        await CreateService().ScheduleHotWalletWithdrawalAsync(BumpId, () =>
+        {
+            events.Add("hook");
+            return Task.CompletedTask;
+        });
+
+        events.Should().Equal("template", "hook", "schedule");
+    }
+
+    [Fact]
+    public async Task ScheduleHotWalletWithdrawalAsync_TemplateGenerationFails_DoesNotRunBeforeScheduling()
+    {
+        HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending);
+        _bitcoin.Setup(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>()))
+            .ThrowsAsync(new NoUTXOsAvailableException());
+        var hookRan = false;
+
+        var act = () => CreateService().ScheduleHotWalletWithdrawalAsync(BumpId, () =>
+        {
+            hookRan = true;
+            return Task.CompletedTask;
+        });
+
+        await act.Should().ThrowAsync<NoUTXOsAvailableException>();
+        hookRan.Should().BeFalse("a request whose PSBT could not be built must not be audited as a success");
     }
 
     [Fact]

@@ -1,0 +1,20 @@
+# ldk-server for the local Spark SSP, on NodeGuard's Polar regtest chain.
+# Adapted from benthecarman/open-ssp e2e/ldk-server-config.toml (MIT).
+[node]
+network = "regtest"
+listening_addresses = ["0.0.0.0:9735"]
+alias = "nodeguard-spark-ssp"
+
+[storage.disk]
+dir_path = "/data"
+
+[log]
+level = "Info"
+
+[tls]
+hosts = ["spark-ldk-server"]
+
+[bitcoind]
+rpc_address = "bitcoind:18443"
+rpc_user = "polaruser"
+rpc_password = "polarpass"

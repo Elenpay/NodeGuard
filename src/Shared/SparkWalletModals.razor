@@ -1,0 +1,639 @@
+@using Humanizer
+@using NodeGuard.Services.Spark
+@using NSpark.Models
+@inject ISparkWalletService SparkWallet
+@inject ISparkSwapService SparkSwaps
+@inject ISparkGuardrails Guardrails
+@inject SparkSettings SparkSettings
+@inject IWalletRepository WalletRepository
+@inject INodeRepository NodeRepository
+@inject ISwapOutRepository SwapOutRepository
+@inject IToastService ToastService
+@inject ILogger<SparkWalletModals> Logger
+
+@* The Spark tab's modals: every Spark wallet's details and Withdraw all; creating, max balance and archiving are for hot Spark wallets only *@
+
+<Modal @ref="_createModal" Closing="OnCreateModalClosing">
+    <ModalContent Centered Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle>New Spark wallet</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            @if (_created is null)
+            {
+                <Alert Color="Color.Warning" Visible>
+                    <AlertDescription>
+                        A Spark wallet's keys are hot: its seed is stored encrypted in NodeGuard's database. Use it only to pass
+                        swap-outs through, with a small max balance, and assign it to nodes in their liquidity settings.
+                    </AlertDescription>
+                </Alert>
+                <Field>
+                    <FieldLabel>Name</FieldLabel>
+                    <TextEdit @bind-Text="_name" />
+                </Field>
+                <Field>
+                    <FieldLabel>Spark account</FieldLabel>
+                    <FieldHelp>The account its keys are derived at (m/8797555'/account'/…)</FieldHelp>
+                    <NumericEdit TValue="int" @bind-Value="_account" Min="0" />
+                </Field>
+                <Field>
+                    <FieldLabel>Max balance (sats)</FieldLabel>
+                    <FieldHelp>The most it may hold, counting a new swap. Empty: SPARK_MAX_BALANCE_SATS (@SparkSettings.MaxBalanceSats.ToString("N0") sats)</FieldHelp>
+                    <NumericEdit TValue="long?" @bind-Value="_maxBalanceSats" Min="1" />
+                </Field>
+            }
+            else
+            {
+                <Alert Color="Color.Danger" Visible>
+                    <AlertDescription>
+                        Write these 24 words down now. They are shown only once, and they are the only way back to this wallet's
+                        sats if NodeGuard's Data Protection key ring is lost.
+                    </AlertDescription>
+                </Alert>
+                <p><strong>Identity:</strong> <code>@_created.Wallet.SparkIdentityPublicKey</code></p>
+                <ol style="columns: 4">
+                    @foreach (var word in _created.Mnemonic.Split(' '))
+                    {
+                        <li><code>@word</code></li>
+                    }
+                </ol>
+                <Check TValue="bool" @bind-Checked="_backedUp">I've backed them up</Check>
+            }
+        </ModalBody>
+        <ModalFooter>
+            @if (_created is null)
+            {
+                <Button Color="Color.Secondary" Clicked="@(() => _createModal.Hide())">Cancel</Button>
+                <Button Color="Color.Primary" Disabled="@(_busy || string.IsNullOrWhiteSpace(_name))" Clicked="CreateAsync">Create</Button>
+            }
+            else
+            {
+                <Button Color="Color.Primary" Disabled="@(!_backedUp)" Clicked="CloseCreatedAsync">Done</Button>
+            }
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+<Modal @ref="_detailsModal">
+    <ModalContent Centered Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle>Spark wallet @_wallet?.Name</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            @if (_wallet is not null)
+            {
+                var status = SparkWallet.GetStatus(_wallet.Ref);
+                var isRemote = _wallet.Ref.WalletId is null;
+                var stuckSince = Guardrails.StuckSince(_wallet.Ref);
+                var lastBalance = Guardrails.LastBalance(_wallet.Ref);
+                <Tabs FullWidth="true" Justified="true" SelectedTab="@_detailsTab" SelectedTabChanged="@OnDetailsTabChanged">
+                <Items>
+                    <Tab Name="Details">Details</Tab>
+                    <Tab Name="PendingSwaps">Pending swaps (@_pendingSwaps.Count)</Tab>
+                    <Tab Name="Transactions">Transactions</Tab>
+                </Items>
+                <Content>
+                <TabPanel Name="Details">
+                <Table>
+                    <TableBody>
+                        <TableRow>
+                            <TableRowHeader>Signer</TableRowHeader>
+                            <TableRowCell>@(isRemote ? $"Remote signer at {SignerHost} (SPARK_SIGNER=remote)" : "Hot: its seed is stored encrypted in NodeGuard's database")</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowHeader>Identity</TableRowHeader>
+                            <TableRowCell>
+                                @if ((_wallet.IdentityPublicKey ?? status.IdentityPublicKey) is { } identity)
+                                {
+                                    <code>@identity</code>
+                                    @if (isRemote)
+                                    {
+                                        @(SparkSettings.IdentityPublicKey is null ? " (saved on the first handshake)" : " (SPARK_IDENTITY_PUBKEY)")
+                                    }
+                                }
+                                else
+                                {
+                                    <span>Not known yet: it is saved on the remote signer's first handshake</span>
+                                }
+                            </TableRowCell>
+                        </TableRow>
+                        @if (isRemote)
+                        {
+                            <TableRow><TableRowHeader>Seed fingerprint</TableRowHeader><TableRowCell><code>@SparkSettings.SeedFingerprint</code> (SPARK_SEED_FINGERPRINT)</TableRowCell></TableRow>
+                        }
+                        <TableRow>
+                            <TableRowHeader>Account</TableRowHeader>
+                            <TableRowCell>@(isRemote ? $"{SparkSettings.Account} (SPARK_ACCOUNT)" : $"{_row?.SparkAccount ?? 0}")</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowHeader>Max balance</TableRowHeader>
+                            <TableRowCell>
+                                <Tooltip Text="@($"{_wallet.MaxBalanceSats:N0} sats")" Placement="TooltipPlacement.Right">
+                                    @Btc(_wallet.MaxBalanceSats)
+                                </Tooltip>
+                                @(isRemote || _row?.SparkMaxBalanceSats is null ? " (SPARK_MAX_BALANCE_SATS)" : "")
+                            </TableRowCell>
+                        </TableRow>
+                        <TableRow><TableRowHeader>Status</TableRowHeader><TableRowCell>@status.State @status.Reason</TableRowCell></TableRow>
+                        <TableRow><TableRowHeader>Exit speed</TableRowHeader><TableRowCell>@SparkSettings.ExitSpeedSummary</TableRowCell></TableRow>
+                        <TableRow><TableRowHeader>Max exit fee</TableRowHeader><TableRowCell>@SparkSettings.MaxExitFeeSats.ToString("N0") sats per exit (SPARK_MAX_EXIT_FEE_SATS)</TableRowCell></TableRow>
+                        <TableRow>
+                            <TableRowHeader>Last balance check</TableRowHeader>
+                            <TableRowCell>@(lastBalance is null ? "not checked since NodeGuard started" : $"{Btc(lastBalance.OwnedSats)} owned, {lastBalance.At.Humanize()}")</TableRowCell>
+                        </TableRow>
+                        @if (stuckSince is not null)
+                        {
+                            <TableRow>
+                                <TableRowHeader>Stuck since</TableRowHeader>
+                                <TableRowCell><span class="text-danger">@stuckSince.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC (@stuckSince.Value.Humanize()): it holds sats none of its swaps in flight accounts for</span></TableRowCell>
+                            </TableRow>
+                        }
+                        @if (_loadingBalance)
+                        {
+                            <TableRow><TableRowHeader>Balance</TableRowHeader><TableRowCell>Reading the balance from the Spark operators…</TableRowCell></TableRow>
+                        }
+                        else if (_balanceError is not null)
+                        {
+                            <TableRow><TableRowHeader>Balance</TableRowHeader><TableRowCell><span class="text-danger">Not available: @_balanceError</span></TableRowCell></TableRow>
+                        }
+                        else if (_balance is not null)
+                        {
+                            @BalanceRow("Owned", _balance.Owned,
+                                "Everything the wallet owns: what is available, what is frozen, and what an operation in progress still holds (an exit until it confirms, a transfer not applied yet)")
+                            @BalanceRow("Available", _balance.Available,
+                                "What the wallet can send or exit right now")
+                            @BalanceRow("Incoming", _balance.Incoming,
+                                "Arriving but not spendable yet: inbound transfers waiting to be claimed, such as a swap's payment until the exit job claims it")
+                            @BalanceRow("Frozen", _balance.Frozen,
+                                "Leaves too close to their refund timelock: the Spark operators will neither move nor renew them, and only a unilateral on-chain exit recovers them")
+                        }
+                    </TableBody>
+                </Table>
+                </TabPanel>
+                <TabPanel Name="PendingSwaps">
+                    @if (_pendingSwaps.Count == 0)
+                    {
+                        <Paragraph Margin="Margin.Is3.FromTop">No pending Spark swaps.</Paragraph>
+                    }
+                    else
+                    {
+                        <Table Striped Narrow Margin="Margin.Is3.FromTop">
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Swap</TableHeaderCell>
+                                    <TableHeaderCell>Node</TableHeaderCell>
+                                    <TableHeaderCell>Amount</TableHeaderCell>
+                                    <TableHeaderCell>Step</TableHeaderCell>
+                                    <TableHeaderCell>Destination</TableHeaderCell>
+                                    <TableHeaderCell>Created (UTC)</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                @foreach (var swap in _pendingSwaps)
+                                {
+                                    <TableRow>
+                                        <TableRowCell>#@swap.Id</TableRowCell>
+                                        <TableRowCell>@(swap.NodeId is { } nodeId && _nodeNames.TryGetValue(nodeId, out var nodeName) ? nodeName : "")</TableRowCell>
+                                        <TableRowCell>
+                                            <Tooltip Text="@($"{swap.SatsAmount:N0} sats")" Placement="TooltipPlacement.Right">@Btc(swap.SatsAmount)</Tooltip>
+                                        </TableRowCell>
+                                        <TableRowCell>
+                                            @StepOf(swap)
+                                            @if (swap.TxId is { } txId)
+                                            {
+                                                <Tooltip Text="@txId" Placement="TooltipPlacement.Left"><code> @(txId[..8])…</code></Tooltip>
+                                            }
+                                        </TableRowCell>
+                                        <TableRowCell>@swap.DestinationWallet?.Name</TableRowCell>
+                                        <TableRowCell>
+                                            <Tooltip Text="@swap.CreationDatetime.Humanize()" Placement="TooltipPlacement.Left">
+                                                @swap.CreationDatetime.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")
+                                            </Tooltip>
+                                        </TableRowCell>
+                                    </TableRow>
+                                }
+                            </TableBody>
+                        </Table>
+                    }
+                </TabPanel>
+                <TabPanel Name="Transactions">
+                    @if (_loadingTransfers)
+                    {
+                        <Paragraph Margin="Margin.Is3.FromTop">Reading the wallet's transfers from the Spark operators…</Paragraph>
+                    }
+                    else if (_transfersError is not null)
+                    {
+                        <Paragraph Margin="Margin.Is3.FromTop"><span class="text-danger">Not available: @_transfersError</span></Paragraph>
+                    }
+                    else if (_transfers is { Count: 0 })
+                    {
+                        <Paragraph Margin="Margin.Is3.FromTop">No transfers yet.</Paragraph>
+                    }
+                    else if (_transfers is not null)
+                    {
+                        <Table Striped Narrow Margin="Margin.Is3.FromTop">
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Date (UTC)</TableHeaderCell>
+                                    <TableHeaderCell>Direction</TableHeaderCell>
+                                    <TableHeaderCell>Type</TableHeaderCell>
+                                    <TableHeaderCell>Amount</TableHeaderCell>
+                                    <TableHeaderCell>Status</TableHeaderCell>
+                                    <TableHeaderCell>Swap</TableHeaderCell>
+                                    <TableHeaderCell>Transfer</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                @foreach (var transfer in _transfers)
+                                {
+                                    <TableRow>
+                                        <TableRowCell>
+                                            <Tooltip Text="@transfer.Date.Humanize()" Placement="TooltipPlacement.Right">
+                                                @transfer.Date.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")
+                                            </Tooltip>
+                                        </TableRowCell>
+                                        <TableRowCell>@(transfer.IsSent ? "Sent" : "Received")</TableRowCell>
+                                        <TableRowCell>@transfer.Type</TableRowCell>
+                                        <TableRowCell>
+                                            <Tooltip Text="@($"{transfer.AmountSats:N0} sats")" Placement="TooltipPlacement.Right">
+                                                @Btc(transfer.AmountSats)
+                                            </Tooltip>
+                                        </TableRowCell>
+                                        <TableRowCell>@transfer.Status</TableRowCell>
+                                        <TableRowCell>@string.Join(", ", transfer.SwapIds.Select(id => $"#{id}"))</TableRowCell>
+                                        <TableRowCell>
+                                            <Tooltip Text="@transfer.Id" Placement="TooltipPlacement.Left">
+                                                <code>@(transfer.Id.Length > 8 ? transfer.Id[..8] + "…" : transfer.Id)</code>
+                                            </Tooltip>
+                                        </TableRowCell>
+                                    </TableRow>
+                                }
+                            </TableBody>
+                        </Table>
+                    }
+                </TabPanel>
+                </Content>
+                </Tabs>
+            }
+        </ModalBody>
+        <ModalFooter>
+            @if (_detailsTab == "Transactions")
+            {
+                <Button Color="Color.Secondary" Disabled="_loadingTransfers" Clicked="RefreshTransfersAsync">Refresh transactions</Button>
+            }
+            else
+            {
+                <Button Color="Color.Secondary" Disabled="_loadingBalance" Clicked="RefreshBalanceAsync">Refresh balance</Button>
+            }
+            <Button Color="Color.Primary" Clicked="@(() => _detailsModal.Hide())">Close</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+<Modal @ref="_maxBalanceModal">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Max balance of @_wallet?.Name</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Field>
+                <FieldLabel>Max balance (sats)</FieldLabel>
+                <FieldHelp>The most it may hold, counting a new swap. Empty: SPARK_MAX_BALANCE_SATS (@SparkSettings.MaxBalanceSats.ToString("N0") sats)</FieldHelp>
+                <NumericEdit TValue="long?" @bind-Value="_maxBalanceSats" Min="1" />
+            </Field>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@(() => _maxBalanceModal.Hide())">Cancel</Button>
+            <Button Color="Color.Primary" Disabled="_busy" Clicked="SaveMaxBalanceAsync">Save</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+<Modal @ref="_withdrawModal">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Withdraw all from @_wallet?.Name</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <p>
+                Everything the Spark wallet holds exits on-chain, to new addresses, even while its swaps run.
+                Its paid swaps exit now, each to its own destination wallet, and complete as usual.
+                What no swap owns exits in one cooperative exit to the wallet below.
+                Swaps still being paid stay, with whatever arrived since the oldest pending swap was created: they exit with
+                the wallet's next exit.
+            </p>
+            <p>
+                The SSP's fee is capped at @SparkSettings.MaxExitFeeSats.ToString("N0") sats per exit (SPARK_MAX_EXIT_FEE_SATS).
+                Exits go at speed @SparkSettings.ExitSpeedSummary; the wallet keeps showing the sats as owned until they confirm.
+            </p>
+            <Field>
+                <FieldLabel>Destination wallet</FieldLabel>
+                <SelectList TItem="Wallet" TValue="int" Data="@_destinations" TextField="@(w => w.Name)" ValueField="@(w => w.Id)"
+                            @bind-SelectedValue="_destinationWalletId" DefaultItemText="Choose the destination wallet" />
+            </Field>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@(() => _withdrawModal.Hide())">Cancel</Button>
+            <Button Color="Color.Primary" Disabled="@(_busy || _destinationWalletId == 0)" Clicked="WithdrawAllAsync">Withdraw all</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+<Modal @ref="_archiveModal">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Archive @_wallet?.Name?</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <p>An archived Spark wallet can't be used for swaps. Only an empty wallet that no node uses can be archived.</p>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@(() => _archiveModal.Hide())">Cancel</Button>
+            <Button Color="Color.Danger" Disabled="_busy" Clicked="ArchiveAsync">Archive</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@code {
+    /// <summary>Called after a Spark wallet was created, edited, withdrawn from or archived</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private Modal _createModal = default!;
+    private Modal _detailsModal = default!;
+    private Modal _maxBalanceModal = default!;
+    private Modal _withdrawModal = default!;
+    private Modal _archiveModal = default!;
+
+    private bool _busy;
+    private string _name = string.Empty;
+    private int _account;
+    private long? _maxBalanceSats;
+    private SparkWalletCreation? _created;
+    private bool _backedUp;
+
+    private SparkWalletEntry? _wallet;
+    private Wallet? _row;
+    private SatsBalance? _balance;
+    private bool _loadingBalance;
+    private string? _balanceError;
+    private List<SwapOut> _pendingSwaps = new();
+    private Dictionary<int, string> _nodeNames = new();
+    private string _detailsTab = "Details";
+    private IReadOnlyList<SparkWalletTransfer>? _transfers;
+    private bool _loadingTransfers;
+    private string? _transfersError;
+    private List<Wallet> _destinations = new();
+    private int _destinationWalletId;
+
+    public async Task ShowCreateAsync()
+    {
+        _name = string.Empty;
+        _account = 0;
+        _maxBalanceSats = null;
+        _created = null;
+        _backedUp = false;
+        await _createModal.Show();
+    }
+
+    public async Task ShowDetailsAsync(SparkWalletEntry wallet)
+    {
+        _wallet = wallet;
+        _row = wallet.Ref.WalletId is { } id ? await WalletRepository.GetById(id) : null;
+        _balance = null;
+        _detailsTab = "Details";
+        _transfers = null;
+        _transfersError = null;
+
+        var nodes = await NodeRepository.GetAll();
+        _nodeNames = nodes.ToDictionary(n => n.Id, n => n.Name);
+        var identity = wallet.IdentityPublicKey ?? SparkWallet.GetStatus(wallet.Ref).IdentityPublicKey;
+        _pendingSwaps = PendingSwapsOf(await SwapOutRepository.GetAllPending(), identity);
+
+        await _detailsModal.Show();
+        await RefreshBalanceAsync();
+    }
+
+    /// <summary>The pending Spark swaps paid, or being paid, into the wallet with this identity, oldest first</summary>
+    public static List<SwapOut> PendingSwapsOf(IEnumerable<SwapOut> pending, string? identity) =>
+        identity is null
+            ? new List<SwapOut>()
+            : pending.Where(s => s.Provider == SwapProvider.Spark && s.Status == SwapOutStatus.Pending &&
+                                 string.Equals(s.SparkIdentity, identity, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(s => s.CreationDatetime)
+                .ToList();
+
+    private static string StepOf(SwapOut swap) =>
+        swap.TxId is not null ? "Exit sent"
+        : swap.LightningFeeSats is null ? "Being paid"
+        : swap.SparkTransferId is null ? "Paid, its transfer not found yet"
+        : "Waiting to exit";
+
+    private string SignerHost => SparkSettings.SignerRieUrl?.Host is { } rie ? $"{rie} (local emulator)" : SparkSettings.SignerEndpoint?.Host ?? "";
+
+    public static string Btc(long sats) =>
+        $"{new NBitcoin.Money(sats, NBitcoin.MoneyUnit.Satoshi).ToUnit(NBitcoin.MoneyUnit.BTC):f8} BTC";
+
+    /// <summary>The transfers are read the first time their tab opens</summary>
+    private async Task OnDetailsTabChanged(string name)
+    {
+        _detailsTab = name;
+        if (name == "Transactions" && _transfers is null && !_loadingTransfers) await RefreshTransfersAsync();
+    }
+
+    private async Task RefreshTransfersAsync()
+    {
+        if (_wallet is null) return;
+
+        _loadingTransfers = true;
+        _transfersError = null;
+        StateHasChanged();
+        try
+        {
+            _transfers = await SparkWallet.ListTransfersAsync(_wallet.Ref);
+        }
+        catch (Exception e) when (e is InvalidOperationException or ArgumentException or SparkUnavailableException)
+        {
+            _transfersError = e.Message;
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Could not read the transfers of {Wallet}", _wallet.Ref);
+            _transfersError = "the Spark operators could not be reached";
+        }
+        finally
+        {
+            _loadingTransfers = false;
+            StateHasChanged();
+        }
+    }
+
+    public async Task ShowMaxBalanceAsync(SparkWalletEntry wallet)
+    {
+        _wallet = wallet;
+        _row = wallet.Ref.WalletId is { } id ? await WalletRepository.GetById(id) : null;
+        _maxBalanceSats = _row?.SparkMaxBalanceSats;
+        await _maxBalanceModal.Show();
+    }
+
+    public async Task ShowWithdrawAllAsync(SparkWalletEntry wallet)
+    {
+        _wallet = wallet;
+        _destinationWalletId = 0;
+        _destinations = await WalletRepository.GetAvailableWallets();
+        await _withdrawModal.Show();
+    }
+
+    public async Task ShowArchiveAsync(SparkWalletEntry wallet)
+    {
+        _wallet = wallet;
+        await _archiveModal.Show();
+    }
+
+    private async Task CreateAsync()
+    {
+        await RunAsync(async () =>
+        {
+            _created = await SparkWallet.CreateWalletAsync(_name, _account, _maxBalanceSats);
+            ToastService.ShowSuccess($"Spark wallet {_created.Wallet.Name} created");
+        });
+    }
+
+    private Task OnCreateModalClosing(ModalClosingEventArgs e)
+    {
+        // The words are shown once: the modal stays until they are confirmed backed up
+        if (_created is not null && !_backedUp) e.Cancel = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task CloseCreatedAsync()
+    {
+        await _createModal.Hide();
+        _created = null;
+        await OnChanged.InvokeAsync();
+    }
+
+    /// <summary>A balance row in BTC: what the figure means on its label's tooltip, the sats on the amount's</summary>
+    private static RenderFragment BalanceRow(string label, long sats, string meaning) =>
+        @<TableRow>
+            <TableRowHeader>
+                <Tooltip Text="@meaning" Placement="TooltipPlacement.Right" Multiline="true">@label ⓘ</Tooltip>
+            </TableRowHeader>
+            <TableRowCell>
+                <Tooltip Text="@($"{sats:N0} sats")" Placement="TooltipPlacement.Right">
+                    @($"{new NBitcoin.Money(sats, NBitcoin.MoneyUnit.Satoshi).ToUnit(NBitcoin.MoneyUnit.BTC):f8} BTC")
+                </Tooltip>
+            </TableRowCell>
+        </TableRow>;
+
+    /// <summary>
+    /// Reads the wallet's current balance from the Spark operators. Re-renders itself: when the details open, this runs
+    /// from the Wallets page's handler, which would only re-render the page
+    /// </summary>
+    private async Task RefreshBalanceAsync()
+    {
+        if (_wallet is null) return;
+
+        _loadingBalance = true;
+        _balanceError = null;
+        StateHasChanged();
+        try
+        {
+            _balance = await SparkWallet.GetSatsBalanceAsync(_wallet.Ref);
+        }
+        catch (Exception e) when (e is InvalidOperationException or ArgumentException or SparkUnavailableException)
+        {
+            _balanceError = e.Message;
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Could not read the balance of {Wallet}", _wallet.Ref);
+            _balanceError = "the Spark operators could not be reached";
+        }
+        finally
+        {
+            _loadingBalance = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveMaxBalanceAsync()
+    {
+        await RunAsync(async () =>
+        {
+            await SparkWallet.SetMaxBalanceAsync(HotWalletId, _maxBalanceSats);
+            ToastService.ShowSuccess($"Max balance of {_wallet.Name} saved");
+            await _maxBalanceModal.Hide();
+            await OnChanged.InvokeAsync();
+        });
+    }
+
+    private async Task WithdrawAllAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var withdrawal = await SparkSwaps.WithdrawAllAsync(_wallet!.Ref, _destinationWalletId);
+            var done = new List<string>();
+            foreach (var exit in withdrawal.SwapExits)
+            {
+                var swaps = $"Spark swap{(exit.SwapIds.Count == 1 ? "" : "s")} {string.Join(", ", exit.SwapIds)}";
+                done.Add(exit.Error is not null ? $"{swaps}: {exit.Error}"
+                    : exit.TxId is not null ? $"{swaps} exited in {exit.TxId}"
+                    : $"{swaps} wait: their leaves can't move yet");
+            }
+
+            if (withdrawal.Leftover is { } leftover)
+            {
+                done.Add($"{leftover.PayoutSats:N0} sats no swap owns withdrew in {leftover.TxId} (SSP fee {leftover.FeeSats:N0} sats)");
+            }
+
+            if (withdrawal.HeldBackSats > 0) done.Add($"{withdrawal.HeldBackSats:N0} sats stay for its pending swaps");
+
+            ToastService.ShowSuccess(done.Count > 0 ? $"{_wallet.Name}: {string.Join("; ", done)}" : $"{_wallet.Name} had nothing to withdraw");
+            if (withdrawal.Note is not null) ToastService.ShowWarning(withdrawal.Note);
+            await _withdrawModal.Hide();
+            await OnChanged.InvokeAsync();
+        });
+    }
+
+    private async Task ArchiveAsync()
+    {
+        await RunAsync(async () =>
+        {
+            await SparkWallet.ArchiveWalletAsync(HotWalletId);
+            ToastService.ShowSuccess($"{_wallet.Name} archived");
+            await _archiveModal.Hide();
+            await OnChanged.InvokeAsync();
+        });
+    }
+
+    private int HotWalletId => _wallet?.Ref.WalletId ?? throw new InvalidOperationException("Only a hot Spark wallet has this action.");
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try
+        {
+            await action();
+        }
+        catch (Exception e) when (e is InvalidOperationException or ArgumentException or SparkUnavailableException)
+        {
+            ToastService.ShowError(e.Message);
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Spark wallet action failed");
+            ToastService.ShowError("Something went wrong");
+        }
+        finally
+        {
+            // The modals are opened from the Wallets page, whose handlers re-render the page, not this component
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,101 @@
+# Adapted from benthecarman/open-ssp e2e/upstream/operator.config.yaml (MIT): bitcoind -> Polar backend.
+dkg:
+  min_available_keys: 100
+bitcoind:
+  regtest:
+    network: regtest
+    host: bitcoind:18443
+    rpcuser: polaruser
+    rpcpassword: polarpass
+    zmqpubrawblock: tcp://bitcoind:28334
+token:
+  disconnect_lrc20_node: true
+
+grpc:
+  server_connection_timeout: 5s
+  server_keepalive_time: 300s
+  server_keepalive_timeout: 20s
+  server_unary_handler_timeout: 60s
+  client_timeout: 20s
+
+lrc20:
+  regtest:
+    disablerpcs: true
+    disablel1: true
+    network: regtest
+    host: 127.0.0.1:18530
+    withdrawbondsats: 10000
+    withdrawrelativeblocklocktime: 1000
+    grpcpagesize: 200
+    grpcpoolsize: 10
+service_authz:
+  mode: 1 # AuthzModeDisabled
+  ip_allowlist: []
+xff_client_ip_position: 0
+rate_limiter:
+  enabled: true
+  window: 60s
+  max_requests: 1000
+  methods: []
+return_detailed_errors: true
+return_detailed_panic_errors: true
+tracing:
+  enabled: false
+  otel_collector_endpoint: ""
+  otel_collector_cert_path: ""
+  global_sampling_rate: 0
+  span_sampling_config:
+    per_span_sampling_rates: {}
+    allow_list: []
+    block_list: []
+knobs:
+  static_values:
+    spark.database.pool.min_conns: 4
+    spark.so.max_unused_deposit_addresses: 64
+    spark.so.enable_instant_static_deposit@REGTEST: 100
+    spark.so.max_pending_instant_static_deposit_amount: 1000000
+    spark.so.deposit_tree.require_prepare_binding: 0
+    spark.so.grpc.server.stream_heartbeat.enabled: 100
+    spark.so.log_transfer_query_invocations: 0
+    spark.so.log_transfer_query_invocations_slow_ms: 0
+    spark.so.shutdown_hodl_invoices: 0
+    spark.so.lightning.receive_sender_allowlist.enabled: 0
+    spark.so.mpc_transfer.enabled: 0
+    spark.so.use_batched_ancestor_chain: 100
+    spark.so.initiate_preimage_swap_v4.enabled: 1
+    spark.so.lightning.enforce_htlc_refund_timelock_floor: 1
+    spark.so.use_consensus_initiate_counter_transfer: 1
+    spark.so.use_consensus_initiate_swap_primary_transfer: 1
+    spark.so.enable_partner_jwt: 1
+    spark.so.signing_keyshare.backfill_secrets_enabled: 0
+    spark.so.signing_keyshare.clear_secret_shares_enabled: 0
+    spark.so.signing_keyshare.dual_write_secret_share: 100
+    spark.so.purge_dangling_signing_keyshare_secrets_batch_size: 1000
+    spark.so.purge_dangling_signing_keyshare_secrets_max_scan_count: 100000
+    spark.so.reconcile_signing_keyshare_secret_pointers_batch_size: 1000
+    spark.so.reconcile_signing_keyshare_secret_pointers_max_scan_count: 100000
+    spark.so.tokens.allow_extra_metadata_on_mainnet: 0
+    spark.so.tokens.allowances_enabled: 1
+    spark.so.tokens.backfill_create_mint_finalized_status_enabled: 0
+    spark.so.tokens.coordinated_freeze_enabled: 0
+    spark.so.tokens.enable_justice_transactions: 1
+    spark.so.tokens.enforce_withdrawal_signature_validation: 0
+    spark.so.tokens.l1_exit_withdrawals_enabled: 1
+    spark.so.tokens.max_active_allowances_per_owner: 100
+    spark.so.tokens.multisig_issuer_enabled: 0
+    spark.so.tokens.token_transaction_v3_enabled: 100
+    spark.so.tokens.token_transaction_v3_phase2_enabled: 100
+    spark.so.tokens.token_transaction_v3_phase2_retry_enabled: 100
+    spark.so.tokens.tx_events_enabled: 1
+    spark.so.finalize_revealed_token_transactions.batch_limit: 50
+    spark.so.finalize_revealed_token_transactions.max_runtime_seconds: 180
+    spark.so.flow_execution.stuck_threshold_seconds: 300
+    spark.so.flow_execution.coordinator_stall_threshold_seconds: 600
+    spark.so.flow_execution.sweep_batch_limit: 50
+    spark.so.flow_execution.metrics_enabled: 0
+    spark.so.flow_execution.metrics_min_age_seconds: 600
+    spark.so.internal_rpc.brontide_enabled: 0
+    spark.so.ro_session@/spark.SparkService/query_nodes: 100
+    spark.so.ro_session@/spark.SparkService/query_pending_transfers: 100
+    spark.so.ro_session@/spark.SparkService/query_transfers_by_id: 100
+    spark.so.ro_session@/spark_token.SparkTokenService/query_token_outputs: 100

@@ -130,6 +130,68 @@ service NodeGuardService {
   Sets the fee policy for a channel
    */
   rpc SetChannelFeePolicy(SetChannelFeePolicyRequest) returns (SetChannelFeePolicyResponse);
+
+  /*
+  Requests a manual swap-out of a node's Lightning liquidity to a NodeGuard wallet, as the New Swap dialog does.
+  For Loop and 40swap, an unused deposit address of the wallet is reserved for the payout; a Spark swap reserves
+  its own when it exits, and returns pending as soon as it is recorded: its Lightning payment runs in the
+  background (follow it with GetSwapOut). With reference_id, a repeated request returns the swap already created
+  for it instead of creating another one.
+  */
+  rpc RequestSwapOut(RequestSwapOutRequest) returns (RequestSwapOutResponse);
+
+  /*
+  Returns a swap-out by its id or by the reference_id it was requested with
+  */
+  rpc GetSwapOut(GetSwapOutRequest) returns (GetSwapOutResponse);
+
+  /*
+  Creates a Spark wallet (SPARK_SIGNER=wallet) with a new mnemonic, stored encrypted. The mnemonic is never returned:
+  create the wallet on the Wallets page to see it. Temporary, like Spark wallets themselves.
+  */
+  rpc CreateSparkWallet(CreateSparkWalletRequest) returns (CreateSparkWalletResponse);
+
+  /*
+  Lists the Spark wallets with the nodes whose Spark swaps pass through each
+  */
+  rpc GetSparkWallets(GetSparkWalletsRequest) returns (GetSparkWalletsResponse);
+
+  /*
+  Returns a Spark wallet's balance, from the Spark operators
+  */
+  rpc GetSparkWalletBalance(GetSparkWalletBalanceRequest) returns (GetSparkWalletBalanceResponse);
+
+  /*
+  Empties a Spark wallet, even while its swaps run. Its paid swaps exit now, each batch to an address of its own
+  destination wallet, as if the wallet were full. Then what no pending swap of it owns exits to an unused address of
+  an on-chain wallet. Swaps still being paid, and the leaves of every transfer received since the oldest pending swap
+  was created, stay: they exit with their swaps.
+  */
+  rpc WithdrawAllSparkWallet(WithdrawAllSparkWalletRequest) returns (WithdrawAllSparkWalletResponse);
+
+  /*
+  Archives a Spark wallet; refused unless it is empty and no node uses it
+  */
+  rpc ArchiveSparkWallet(ArchiveSparkWalletRequest) returns (ArchiveSparkWalletResponse);
+
+  /*
+  Streams what happens to an on-chain wallet's withdrawals while the call is open. The first client message must be
+  a subscribe with the wallet id; the server answers with WALLET_EVENT_SUBSCRIBED once the subscription is live, then
+  one WalletEvent per change: created, signature added, signing, broadcast, confirmed, bumped, cancelled, rejected,
+  failed, and an RBF replacement reverted. Events are live only: nothing is stored or replayed, so a client that
+  reconnects should reconcile with GetWithdrawalsRequestStatus after WALLET_EVENT_SUBSCRIBED. Events come from the
+  NodeGuard instance the call is connected to. A client that cannot keep up is disconnected with RESOURCE_EXHAUSTED.
+
+  With intercept_withdrawals, the client also decides on the wallet's withdrawals: before NodeGuard signs and
+  broadcasts one (RBF bumps and cancellations included), it sends WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED with a
+  decision_id and a deadline, and the client answers with a WithdrawalDecision on this call. The withdrawal goes ahead
+  only when every connected interceptor allows it; a block, no answer before the deadline
+  (WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS, 60s by default) or an interceptor leaving before it answers rejects it,
+  and an RBF replacement that is rejected puts the original back to pending confirmation. With no interceptor
+  connected the check is skipped. Interceptors are only seen by the NodeGuard instance they are connected to, so
+  this holds for a single NodeGuard instance. Half-closing the request stream ends an interceptor's call.
+  */
+  rpc SubscribeWalletEvents(stream WalletEventsClientMessage) returns (stream WalletEvent);
 }
 
 message GetLiquidityRulesRequest {
@@ -188,9 +250,11 @@ message RequestWithdrawalRequest {
   string description = 4;
   // in JSON format
   string request_metadata = 5;
-  // Whether the withdrawal should be performed in a changeless way
+  // Whether the withdrawal should be performed in a changeless way: utxos_outpoints are sent in full, minus the fee,
+  // to the single destination, whose amount_sats is ignored and recorded as the total of those UTXOs
   bool changeless = 6;
-  // Outpoints for the UTXOs to use for the withdrawal
+  // Outpoints for the UTXOs to use for the withdrawal. Required when changeless, and every one of them has to be a
+  // confirmed UTXO of the wallet
   repeated string utxos_outpoints = 7;
   // MempoolRecommended fee rate
   FEES_TYPE mempool_fee_rate = 8;
@@ -200,6 +264,8 @@ message RequestWithdrawalRequest {
   optional string reference_id = 10;
   // Destinations for the withdrawal
   repeated Destination destinations = 11;
+  // Optional coin selection strategy to be used by the withdrawal.
+  optional COIN_SELECTION_STRATEGY coin_selection_strategy = 12;
 }
 
 message RequestWithdrawalResponse {
@@ -660,4 +726,250 @@ message GetRebalancesRequest {
 message GetRebalancesResponse {
   repeated GetRebalanceResponse rebalances = 1;
   int32 total_count = 2;
+}
+
+enum SWAP_PROVIDER {
+  SWAP_PROVIDER_LOOP = 0;
+  SWAP_PROVIDER_FORTY_SWAP = 1;
+  SWAP_PROVIDER_SPARK = 2;
+}
+
+enum SWAP_OUT_STATUS {
+  SWAP_OUT_PENDING = 0;
+  SWAP_OUT_COMPLETED = 1;
+  SWAP_OUT_FAILED = 2;
+}
+
+message RequestSwapOutRequest {
+  int32 node_id = 1;
+  SWAP_PROVIDER provider = 2;
+  int64 amount_sats = 3;
+  // Destination wallet: an unused deposit address is reserved from it
+  int32 wallet_id = 4;
+  // Defaults to the node's max swap routing fee ratio
+  optional double max_routing_fees_percent = 5;
+  // The caller's own id for the swap, unique
+  optional string reference_id = 6;
+}
+
+message RequestSwapOutResponse {
+  int32 swap_id = 1;
+  string provider_id = 2;
+  SWAP_OUT_STATUS status = 3;
+  // Empty for a Spark swap: it reserves its address when it exits (see GetSwapOut)
+  string destination_address = 4;
+  optional string error = 5;
+}
+
+message GetSwapOutRequest {
+  oneof swap {
+    int32 swap_id = 1;
+    string reference_id = 2;
+  }
+}
+
+message GetSwapOutResponse {
+  int32 swap_id = 1;
+  SWAP_PROVIDER provider = 2;
+  string provider_id = 3;
+  SWAP_OUT_STATUS status = 4;
+  int64 amount_sats = 5;
+  int64 service_fee_sats = 6;
+  int64 lightning_fee_sats = 7;
+  int64 onchain_fee_sats = 8;
+  optional string tx_id = 9;
+  optional string error = 10;
+  optional int32 destination_wallet_id = 11;
+  // Unset for a Spark swap until it exits, when it reserves its address in the destination wallet
+  optional string destination_address = 12;
+  optional string payment_hash = 13;
+  optional string reference_id = 14;
+  // What the swap paid on-chain to destination_address, once confirmed: what it delivered (Spark swaps; their
+  // on-chain and service fees add up to amount_sats minus it)
+  optional int64 payout_sats = 15;
+}
+
+message CreateSparkWalletRequest {
+  string name = 1;
+  // The Spark account its keys are derived at; 0 by default
+  optional int32 account = 2;
+  // The most it may hold, counting a new swap; SPARK_MAX_BALANCE_SATS by default
+  optional int64 max_balance_sats = 3;
+}
+
+message CreateSparkWalletResponse {
+  int32 wallet_id = 1;
+  string identity_public_key = 2;
+}
+
+message GetSparkWalletsRequest {
+  bool include_archived = 1;
+}
+
+message SparkWalletInfo {
+  int32 id = 1;
+  string name = 2;
+  string identity_public_key = 3;
+  int32 account = 4;
+  // Its own max balance; absent means SPARK_MAX_BALANCE_SATS
+  optional int64 max_balance_sats = 5;
+  int64 effective_max_balance_sats = 6;
+  // The nodes whose Spark swaps pass through it
+  repeated int32 node_ids = 7;
+  bool archived = 8;
+}
+
+message GetSparkWalletsResponse {
+  repeated SparkWalletInfo wallets = 1;
+}
+
+message GetSparkWalletBalanceRequest {
+  int32 wallet_id = 1;
+}
+
+message GetSparkWalletBalanceResponse {
+  int64 owned_sats = 1;
+  int64 available_sats = 2;
+  int64 incoming_sats = 3;
+  int64 frozen_sats = 4;
+}
+
+message WithdrawAllSparkWalletRequest {
+  int32 wallet_id = 1;
+  // The on-chain wallet an unused deposit address is reserved from
+  int32 destination_wallet_id = 2;
+}
+
+message WithdrawAllSparkWalletResponse {
+  // The exit of what no pending swap owns: empty and 0 when there was nothing to exit, or it failed (see note)
+  string tx_id = 1;
+  int64 payout_sats = 2;
+  int64 fee_sats = 3;
+  // The batches of the Spark wallet's paid swaps sent out now, oldest first
+  repeated SparkSwapExit swap_exits = 4;
+  // Spendable sats kept for the Spark wallet's pending swaps
+  int64 held_back_sats = 5;
+  // Anything that stayed behind, and why; empty if nothing did
+  string note = 6;
+}
+
+enum SPARK_EXIT_STEP {
+  // Its transfer has not been found yet, or its leaves can't move yet
+  SPARK_EXIT_WAITING = 0;
+  // The exit was sent; its payout has not confirmed yet
+  SPARK_EXIT_SENT = 1;
+  // The payout confirmed
+  SPARK_EXIT_COMPLETED = 2;
+}
+
+message SparkSwapExit {
+  repeated int32 swap_ids = 1;
+  SPARK_EXIT_STEP step = 2;
+  // The exit's txid, once sent
+  string tx_id = 3;
+  // Why the batch could not move, if it failed; it is retried by the exit job
+  string error = 4;
+}
+
+message ArchiveSparkWalletRequest {
+  int32 wallet_id = 1;
+}
+
+message ArchiveSparkWalletResponse {
+}
+
+message WalletEventsClientMessage {
+  oneof message {
+    // Must be the first message of the call
+    SubscribeWalletEventsRequest subscribe = 1;
+    // Answers a WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED; only from a subscription with intercept_withdrawals
+    WithdrawalDecision decision = 2;
+  }
+}
+
+message WithdrawalDecision {
+  // The decision_id of the WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED being answered
+  string decision_id = 1;
+  bool allow = 2;
+  // Why it was blocked; stored as the withdrawal's rejection reason
+  optional string reason = 3;
+}
+
+message SubscribeWalletEventsRequest {
+  int32 wallet_id = 1;
+  // Only these event types are sent; empty sends all. WALLET_EVENT_SUBSCRIBED and, for interceptors,
+  // WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED are always sent.
+  repeated WALLET_EVENT_TYPE event_types = 2;
+  // Decide on the wallet's withdrawals before they are signed and broadcast
+  bool intercept_withdrawals = 3;
+}
+
+enum WALLET_EVENT_TYPE {
+  WALLET_EVENT_UNSPECIFIED = 0;
+  // First message of every call: the subscription is live
+  WALLET_EVENT_SUBSCRIBED = 1;
+  // A withdrawal request was created, including an RBF replacement (bumping_request_id is set)
+  WALLET_EVENT_WITHDRAWAL_CREATED = 10;
+  // An approver's signed PSBT was stored
+  WALLET_EVENT_WITHDRAWAL_SIGNATURE_ADDED = 11;
+  // Every human signature is in: NodeGuard is signing and broadcasting
+  WALLET_EVENT_WITHDRAWAL_SIGNING = 12;
+  // The transaction was broadcast (tx_id is set) and waits for confirmation
+  WALLET_EVENT_WITHDRAWAL_BROADCAST = 13;
+  // The transaction reached the required confirmations
+  WALLET_EVENT_WITHDRAWAL_CONFIRMED = 14;
+  // Replaced by a fee bump (replaced_by_request_id is set when known)
+  WALLET_EVENT_WITHDRAWAL_BUMPED = 15;
+  // Cancelled by its requestor, or replaced by an RBF cancellation
+  WALLET_EVENT_WITHDRAWAL_CANCELLED = 16;
+  WALLET_EVENT_WITHDRAWAL_REJECTED = 17;
+  WALLET_EVENT_WITHDRAWAL_FAILED = 18;
+  // Its RBF replacement failed or was turned down: the original waits for confirmation again
+  WALLET_EVENT_WITHDRAWAL_REPLACEMENT_REVERTED = 19;
+  // Any other status change, e.g. a hot wallet withdrawal moving to signatures pending
+  WALLET_EVENT_WITHDRAWAL_STATUS_CHANGED = 20;
+  // Sent to interceptors only: answer with a WithdrawalDecision for decision_id before decision_deadline_unix_ms
+  WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED = 21;
+}
+
+message WalletEvent {
+  WALLET_EVENT_TYPE type = 1;
+  int32 wallet_id = 2;
+  int64 occurred_at_unix_ms = 3;
+  oneof payload {
+    WithdrawalEvent withdrawal = 10;
+  }
+}
+
+message WithdrawalDestination {
+  string address = 1;
+  int64 amount_sats = 2;
+}
+
+message WithdrawalEvent {
+  int32 request_id = 1;
+  WITHDRAWAL_REQUEST_STATUS status = 2;
+  // Unset on WALLET_EVENT_WITHDRAWAL_CREATED and WALLET_EVENT_WITHDRAWAL_SIGNATURE_ADDED
+  optional WITHDRAWAL_REQUEST_STATUS previous_status = 3;
+  optional string tx_id = 4;
+  optional string reference_id = 5;
+  optional string reject_or_cancel_reason = 6;
+  // Set on an RBF replacement: the request whose transaction it replaces
+  optional int32 bumping_request_id = 7;
+  // Set on a bumped or RBF-cancelled original: the request that replaces it
+  optional int32 replaced_by_request_id = 8;
+  // The replacement returns the funds to the wallet instead of paying the destinations
+  bool is_rbf_cancellation = 9;
+  int64 amount_sats = 10;
+  repeated WithdrawalDestination destinations = 11;
+  // Human signatures collected and required; unset for hot wallets
+  optional int32 signatures_collected = 12;
+  optional int32 signatures_required = 13;
+  // in JSON format
+  optional string request_metadata = 14;
+  // Requested fee rate when one was set explicitly
+  optional double fee_rate_sat_vb = 15;
+  // Set on WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED
+  optional string decision_id = 16;
+  optional int64 decision_deadline_unix_ms = 17;
 }

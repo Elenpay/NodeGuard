@@ -85,6 +85,9 @@ add-migration name:
    cd {{PROJECT_DIR}} && dotnet ef migrations add --context ApplicationDbContext {{name}}
 remove-migration:
     cd {{PROJECT_DIR}} && dotnet ef migrations remove --context ApplicationDbContext
+# Fails when the model has changes without a migration (CI runs it too); after a restack, regenerate the migration
+check-migrations:
+    cd {{PROJECT_DIR}} && dotnet ef migrations has-pending-model-changes --context ApplicationDbContext
 mine:
     while true; do docker exec polar-n1-backend1 bitcoin-cli -regtest -rpcuser=polaruser -rpcpassword=polarpass -generate 1; sleep 60; done
 
@@ -96,7 +99,7 @@ update-protos:
 # Submodules #
 ##############
 
-REMOTE_SIGNER_URL := 'https://github.com/Elenpay/Nodeguard-Remote-Signer'
+REMOTE_SIGNER_URL := 'https://github.com/Lunar-Rails/Nodeguard-Remote-Signer'
 REMOTE_SIGNER_DIR := 'remote-signer'
 
 # Add the Remote Signer submodule, or initialize it on a fresh clone
@@ -122,15 +125,26 @@ docker-down:
 
 # Stops the development docker containers and removes the volumes, add DOCKER_COMPOSE_FILE to override the default file
 docker-rm:
-    docker compose --profile polar --profile loop --profile 40swap --profile e2e --profile mempool -f {{DOCKER_COMPOSE_FILE}} down -v
+    docker compose --profile polar --profile loop --profile 40swap --profile e2e --profile mempool --profile spark -f {{DOCKER_COMPOSE_FILE}} down -v
+
+SPARK_SERVICES := "spark-cert-init spark-postgres spark-operator-0 spark-operator-1 spark-operator-2 spark-ldk-server spark-ssp spark-setup"
+
+# Starts the local Spark network on the Polar chain (and Polar itself if it is not up), see docker/spark/README.md
+spark-up:
+    docker compose --profile polar --profile spark -f {{DOCKER_COMPOSE_FILE}} up -d {{SPARK_SERVICES}}
+
+# Stops and removes the local Spark network, keeping the Polar chain; its volumes stay unless docker-rm
+spark-down:
+    docker compose --profile polar --profile spark -f {{DOCKER_COMPOSE_FILE}} rm -sf {{SPARK_SERVICES}}
 
 # Runs the full ordered e2e suite (E2ESuiteTests, Category=E2E) in one stack, one `dotnet test` pass:
 # rebalance → fee-engine smoke → fee-engine flow. Clean slate first (down -v): DbInitializer only funds the
 # dev wallets on an empty DB, so a stale volume leaves it unfunded ("no UTXOs" on OpenChannel).
+# The Spark swap-out runs too, against the local Spark network (docker/spark), as in CI.
 test-e2e:
-    -docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
-    docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} run --rm --build e2e-runner
-    docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
+    -docker compose --profile polar --profile e2e --profile spark -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
+    SPARK_ENABLED=true SPARK_E2E=1 docker compose --profile polar --profile e2e --profile spark -f {{DOCKER_COMPOSE_FILE}} run --rm --build e2e-runner
+    docker compose --profile polar --profile e2e --profile spark -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
 
 ##########
 # Dapr #

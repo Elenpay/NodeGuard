@@ -36,15 +36,18 @@ namespace NodeGuard.Data.Repositories
         private readonly IMapper _mapper;
         private readonly NotificationService _notificationService;
         private readonly INBXplorerService _nBXplorerService;
+        private readonly IWithdrawalEventPublisher _withdrawalEventPublisher;
 
         public WalletWithdrawalRequestRepository(IRepository<WalletWithdrawalRequest> repository,
             ILogger<WalletWithdrawalRequestRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
             IMapper mapper,
             NotificationService notificationService,
-            INBXplorerService nBXplorerService
+            INBXplorerService nBXplorerService,
+            IWithdrawalEventPublisher withdrawalEventPublisher
             )
         {
+            _withdrawalEventPublisher = withdrawalEventPublisher;
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
@@ -266,6 +269,9 @@ namespace NodeGuard.Data.Repositories
 
 
             var valueTuple = await _repository.AddAsync(type, applicationDbContext);
+            if (valueTuple.Item1)
+                _withdrawalEventPublisher.PublishCreated(type);
+
             if (!wallet.IsHotWallet)
                 await _notificationService.NotifyRequestSigners(type.WalletId, "/withdrawals");
 
@@ -300,10 +306,19 @@ namespace NodeGuard.Data.Repositories
             // Stamp before mapping, otherwise the stripped copy that is persisted keeps the old UpdateDatetime.
             type.SetUpdateDatetime();
 
+            // The stored status and TxId tell which wallet event this update stands for, so they are read before the
+            // write. The publisher skips the read when nobody listens to the wallet.
+            var before = _withdrawalEventPublisher.ReadBeforeUpdate(type);
+
             //Automapper to remove collections
             var strippedType = _mapper.Map<WalletWithdrawalRequest, WalletWithdrawalRequest>(type);
 
-            return _repository.Update(strippedType, applicationDbContext);
+            var result = _repository.Update(strippedType, applicationDbContext);
+
+            if (result.Item1)
+                _withdrawalEventPublisher.PublishUpdated(before, type);
+
+            return result;
         }
 
         public async Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos)

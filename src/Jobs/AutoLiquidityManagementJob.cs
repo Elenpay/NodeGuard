@@ -21,6 +21,7 @@ using NBitcoin;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -35,6 +36,8 @@ public enum ManageNodeLiquidityResult
     MaxSwapsInFlightReached,
     BudgetExhausted,
     ExcessBalanceBelowMinimum,
+    /// <summary>The only providers with a weight cannot take a swap now (Spark busy or unavailable)</summary>
+    NoProviderAvailable,
     Error
 }
 
@@ -54,6 +57,8 @@ public class AutoLiquidityManagementJob : IJob
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
     private readonly IAuditService _auditService;
+    private readonly ISparkWalletService _sparkWallet;
+    private readonly SparkSettings _sparkSettings;
 
     public AutoLiquidityManagementJob(
         ILogger<AutoLiquidityManagementJob> logger,
@@ -64,8 +69,12 @@ public class AutoLiquidityManagementJob : IJob
         ILightningService lightningService,
         IWalletRepository walletRepository,
         INBXplorerService nbXplorerService,
-        IAuditService auditService)
+        IAuditService auditService,
+        ISparkWalletService sparkWallet,
+        SparkSettings sparkSettings)
     {
+        _sparkWallet = sparkWallet;
+        _sparkSettings = sparkSettings;
         _logger = logger;
         _nodeRepository = nodeRepository;
         _swapOutRepository = swapOutRepository;
@@ -111,32 +120,114 @@ public class AutoLiquidityManagementJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(AutoLiquidityManagementJob));
     }
 
-    /// <summary>
-    /// Selects a swap provider based on configured weights.
-    /// Uses weighted random selection - higher weight = higher probability.
-    /// </summary>
-    private SwapProvider SelectSwapProvider(Node node)
+    /// <summary>The providers with a weight; all weights at 0 means Loop, as before.</summary>
+    private IReadOnlyList<(SwapProvider Provider, int Weight)> WeightedProviders(Node node)
     {
-        var loopWeight = node.LoopSwapWeight;
-        var fortySwapWeight = node.FortySwapWeight;
-        var totalWeight = loopWeight + fortySwapWeight;
-
-        if (totalWeight == 0)
+        if (node is { LoopSwapWeight: <= 0, FortySwapWeight: <= 0, SparkSwapWeight: <= 0 })
         {
             _logger.LogWarning("Node {NodeName} has total weight of 0, defaulting to Loop", node.Name);
-            return SwapProvider.Loop;
+        }
+
+        return SwapProviderLimits.Weighted(node);
+    }
+
+    /// <summary>
+    /// Weighted random choice among <paramref name="weights"/> (the weighted providers below their max swaps in
+    /// flight) that can take a swap now, and the swap it takes: the most it may, within its max swap, the excess
+    /// balance and, for Spark, the room left in the node's Spark wallet under its max balance. A provider is left out
+    /// when that is below its min swap, and Spark also while the node has no Spark wallet or its wallet is
+    /// unavailable. Null when no provider is left, with whether the excess balance was below every one's min swap. Also
+    /// returns the room the provider has for this run's swaps: Spark's wallet room, unlimited for the others.
+    /// </summary>
+    private async Task<(SwapProvider? Provider, long AmountSats, long RoomSats, bool BelowMinimum)> SelectSwapProviderAsync(
+        Node node, IReadOnlyList<(SwapProvider Provider, int Weight)> weights, long excessBalance)
+    {
+        var candidates = new List<(SwapProvider Provider, int Weight, long AmountSats, long RoomSats)>();
+        var belowMinimum = true;
+        foreach (var (provider, weight) in weights)
+        {
+            var limits = SwapProviderLimits.For(node, provider, _sparkSettings);
+            var amount = Math.Min(excessBalance, limits.MaxSats);
+            if (amount < limits.MinSats)
+            {
+                _logger.LogDebug("Node {NodeName}: {Provider} left out, the excess balance ({Excess} sats) is below its min swap ({Min} sats)",
+                    node.Name, provider, excessBalance, limits.MinSats);
+                continue;
+            }
+
+            belowMinimum = false;
+            var providerRoom = long.MaxValue;
+            if (provider == SwapProvider.Spark)
+            {
+                var (reason, room) = await SparkAvailabilityAsync(node, limits.MinSats);
+                if (reason is not null)
+                {
+                    _logger.LogInformation("Node {NodeName}: Spark cannot take a swap now ({Reason}), choosing among the other providers",
+                        node.Name, reason);
+                    continue;
+                }
+
+                // A Spark swap only takes what the node's Spark wallet can still hold under its max balance
+                if (amount > room)
+                {
+                    _logger.LogInformation("Node {NodeName}: Spark swap clamped from {Amount} to {Room} sats by its Spark wallet's max balance",
+                        node.Name, amount, room);
+                    amount = room;
+                }
+
+                providerRoom = room;
+            }
+
+            candidates.Add((provider, weight, amount, providerRoom));
+        }
+
+        if (candidates.Count == 0)
+        {
+            return (null, 0, 0, belowMinimum);
         }
 
         // Weighted random selection
-        var random = new Random();
-        var randomValue = random.Next(0, totalWeight);
+        var totalWeight = candidates.Sum(c => c.Weight);
+        var randomValue = Random.Shared.Next(0, totalWeight);
+        var selected = candidates[^1];
+        var cumulative = 0;
+        foreach (var candidate in candidates)
+        {
+            cumulative += candidate.Weight;
+            if (randomValue < cumulative)
+            {
+                selected = candidate;
+                break;
+            }
+        }
 
-        var selectedProvider = randomValue < loopWeight ? SwapProvider.Loop : SwapProvider.FortySwap;
+        _logger.LogDebug("Selected {Provider} for node {NodeName} (Loop weight: {LoopWeight}, 40swap weight: {FortySwapWeight}, Spark weight: {SparkWeight}, random: {Random})",
+            selected.Provider, node.Name, node.LoopSwapWeight, node.FortySwapWeight, node.SparkSwapWeight, randomValue);
 
-        _logger.LogDebug("Selected {Provider} for node {NodeName} (Loop weight: {LoopWeight}, 40swap weight: {FortySwapWeight}, random: {Random})",
-            selectedProvider, node.Name, loopWeight, fortySwapWeight, randomValue);
+        return (selected.Provider, selected.AmountSats, selected.RoomSats, false);
+    }
 
-        return selectedProvider;
+    /// <summary>
+    /// Why Spark can't take this node's swap now (null when it can), and how many sats the node's Spark wallet
+    /// can still take under its max balance, counting what its swaps not paid yet will still bring in. Room below
+    /// <paramref name="minSwapSats"/> (the node's Spark min swap) can't take a swap either.
+    /// </summary>
+    private async Task<(string? Reason, long RoomSats)> SparkAvailabilityAsync(Node node, long minSwapSats)
+    {
+        if (_sparkSettings.WalletFor(node) is not { } sparkWallet) return ("the node has no Spark wallet", 0);
+
+        var wallet = await _sparkWallet.GetWalletAsync(sparkWallet);
+        if (wallet is null || wallet.IsArchived) return ($"its {sparkWallet} is archived or not a Spark wallet", 0);
+
+        var status = await _sparkWallet.EnsureReadyAsync(sparkWallet);
+        if (!status.IsReady) return (status.Reason ?? status.State.ToString(), 0);
+
+        var balance = (await _sparkWallet.GetBalanceAsync(sparkWallet)).SatsBalance;
+        var room = SparkGuardrails.RoomSats(wallet.MaxBalanceSats, balance, (await _swapOutRepository.GetAllPending())
+            .Where(s => string.Equals(s.SparkIdentity, status.IdentityPublicKey, StringComparison.OrdinalIgnoreCase)));
+        return room < minSwapSats
+            ? ($"{wallet.Name} has {Math.Max(0, room)} sats of room under its max balance, below the node's Spark min swap", room)
+            : (null, room);
     }
 
     public async Task<ManageNodeLiquidityResult> ManageNodeLiquidity(Node node, CancellationToken cancellationToken)
@@ -175,17 +266,21 @@ public class AutoLiquidityManagementJob : IJob
             return ManageNodeLiquidityResult.BalanceBelowThreshold;
         }
 
-        // Get in-flight swaps for this node (optimistic locking)
+        // Swaps in flight count per provider (optimistic locking): one may run serialized while another runs in
+        // parallel. A provider at its max is left out; with every weighted one at its max, nothing is swapped
         var inFlightSwaps = await _swapOutRepository.GetInFlightSwapsByNode(node.Id);
-        var inFlightCount = inFlightSwaps.Count;
+        var weighted = WeightedProviders(node);
+        var available = weighted
+            .Where(w => inFlightSwaps.Count(s => s.Provider == w.Provider) < SwapProviderLimits.For(node, w.Provider, _sparkSettings).MaxInFlight)
+            .ToList();
 
-        _logger.LogDebug("Node {NodeName} has {InFlightCount} swaps in flight, max: {MaxSwapsInFlight}",
-            node.Name, inFlightCount, node.MaxSwapsInFlight);
+        _logger.LogDebug("Node {NodeName} has {InFlightCount} swaps in flight; providers below their max: {Providers}",
+            node.Name, inFlightSwaps.Count, string.Join(", ", available.Select(w => w.Provider)));
 
-        if (inFlightCount >= node.MaxSwapsInFlight)
+        if (available.Count == 0)
         {
-            _logger.LogInformation("Node {NodeName} has reached max swaps in flight ({MaxSwapsInFlight})",
-                node.Name, node.MaxSwapsInFlight);
+            _logger.LogInformation("Node {NodeName} has reached max swaps in flight of every weighted provider ({Providers})",
+                node.Name, string.Join(", ", weighted.Select(w => w.Provider)));
             return ManageNodeLiquidityResult.MaxSwapsInFlightReached;
         }
 
@@ -210,41 +305,92 @@ public class AutoLiquidityManagementJob : IJob
             return ManageNodeLiquidityResult.BudgetExhausted;
         }
 
-        // Determine swap amount (bounded by min, max, and excess balance)
-        // We can only swap what's above the threshold (excess balance)
-        var maxPossibleSwap = Math.Min(excessBalance, node.SwapMaxAmountSats);
-
-        // If we don't have enough to meet the minimum swap size, skip
-        if (maxPossibleSwap < node.SwapMinAmountSats)
+        // Pick the provider among those whose own min and max swap fit what's above the threshold (the excess
+        // balance), before reserving an address for a swap that may not happen: the swap is the most it takes
+        var (provider, swapAmount, room, belowMinimum) = await SelectSwapProviderAsync(node, available, excessBalance);
+        if (provider is not { } selectedProvider)
         {
-            var maxPossibleSwapBtc = new Money(maxPossibleSwap, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-            var minSwapBtc = new Money(node.SwapMinAmountSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-            _logger.LogDebug("Node {NodeName} - max possible swap {MaxPossible} BTC is below minimum {Min} BTC. Excess: {Excess} BTC",
-                node.Name, maxPossibleSwapBtc, minSwapBtc, excessBalanceBtc);
-            return ManageNodeLiquidityResult.ExcessBalanceBelowMinimum;
+            if (belowMinimum)
+            {
+                _logger.LogDebug("Node {NodeName} - excess balance {Excess} BTC is below the min swap of every weighted provider",
+                    node.Name, excessBalanceBtc);
+                return ManageNodeLiquidityResult.ExcessBalanceBelowMinimum;
+            }
+
+            _logger.LogInformation("Node {NodeName}: no weighted swap provider can take a swap now, skipping", node.Name);
+            return ManageNodeLiquidityResult.NoProviderAvailable;
         }
 
-        // Swap the maximum we can, ensuring it meets the minimum
-        var swapAmount = Math.Max(node.SwapMinAmountSats, maxPossibleSwap);
+        _logger.LogInformation("Using {Provider} for swap out on node {NodeName}", selectedProvider, node.Name);
+
+        // The provider fills its free slots this run (its max swaps in flight less its swaps in flight), each swap the
+        // most it may take within what is left of the excess balance and, for Spark, of its wallet's room. Beyond the
+        // first, a swap is added only while the run's worst-case routing fees (the provider's max routing fee of each)
+        // fit the swap fee budget left
+        var limits = SwapProviderLimits.For(node, selectedProvider, _sparkSettings);
+        var freeSlots = limits.MaxInFlight - inFlightSwaps.Count(s => s.Provider == selectedProvider);
+        var excessLeft = excessBalance;
+        var roomLeft = room;
+        var budgetLeft = remainingFeeBudget;
+        var started = 0;
+        while (started < freeSlots)
+        {
+            var amount = started == 0 ? swapAmount : Math.Min(Math.Min(limits.MaxSats, excessLeft), roomLeft);
+            if (started > 0 && amount < limits.MinSats) break;
+
+            var worstCaseFee = (long)Math.Ceiling(amount * limits.MaxRoutingFeeRatio);
+            if (started > 0 && worstCaseFee > budgetLeft)
+            {
+                _logger.LogInformation("Node {NodeName}: no more {Provider} swaps this run, their worst-case routing fees would exceed the swap budget left ({Budget} sats)",
+                    node.Name, selectedProvider, budgetLeft);
+                break;
+            }
+
+            if (!await CreateAutomaticSwapAsync(node, selectedProvider, amount, limits.MaxRoutingFeeRatio, cancellationToken)) break;
+
+            started++;
+            excessLeft -= amount;
+            roomLeft -= amount;
+            budgetLeft -= worstCaseFee;
+        }
+
+        if (started == 0) return ManageNodeLiquidityResult.Error;
+
+        _logger.LogInformation("Node {NodeName}: started {Count} {Provider} swaps this run ({FreeSlots} free slots)",
+            node.Name, started, selectedProvider, freeSlots);
+        return ManageNodeLiquidityResult.Success;
+    }
+
+    /// <summary>
+    /// Creates and audits one automatic swap-out, paying at most <paramref name="maxRoutingFeeRatio"/> of it in routing
+    /// fees (the provider's own); false when it could not be created.
+    /// </summary>
+    private async Task<bool> CreateAutomaticSwapAsync(Node node, SwapProvider provider, long swapAmount,
+        decimal maxRoutingFeeRatio, CancellationToken cancellationToken)
+    {
         var swapAmountBtc = new Money(swapAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
 
-        _logger.LogDebug("Node {NodeName} - Initiating swap for {Amount} BTC", node.Name, swapAmountBtc);
-
-        // Get destination address from wallet
-        var destinationAddress = await GetDestinationAddressAsync(node, cancellationToken);
-        if (destinationAddress == null)
+        // Loop and 40swap send to an address of the destination wallet given now; a Spark swap reserves its own
+        // when it exits
+        string? destinationAddress = null;
+        if (provider != SwapProvider.Spark)
         {
-            _logger.LogError("Could not get destination address for node {NodeName}", node.Name);
-            return ManageNodeLiquidityResult.Error;
+            destinationAddress = await GetDestinationAddressAsync(node, cancellationToken);
+            if (destinationAddress == null)
+            {
+                _logger.LogError("Could not get destination address for node {NodeName}", node.Name);
+                return false;
+            }
+        }
+        else if (!node.FundsDestinationWalletId.HasValue)
+        {
+            _logger.LogError("Node {NodeName} has no funds destination wallet configured", node.Name);
+            return false;
         }
 
         // Create swap out request
         _logger.LogInformation("Initiating automatic swap out for node {NodeName} - Amount: {Amount} BTC",
             node.Name, swapAmountBtc);
-
-        // Select swap provider based on weights
-        var selectedProvider = SelectSwapProvider(node);
-        _logger.LogInformation("Using {Provider} for swap out on node {NodeName}", selectedProvider, node.Name);
 
         try
         {
@@ -252,7 +398,7 @@ public class AutoLiquidityManagementJob : IJob
             {
                 Amount = swapAmount,
                 Address = destinationAddress,
-                MaxRoutingFeesPercent = node.MaxSwapRoutingFeeRatio * 100, // Convert to percentage
+                MaxRoutingFeesPercent = maxRoutingFeeRatio * 100, // Convert to percentage
                 MaxServiceFeesPercent = Constants.SWAP_MAX_SERVICE_FEES_PERCENT,
                 MaxMinerFees = Constants.SWAP_MAX_MINER_FEES_SATS,
                 SweepConfTarget = Constants.SWEEP_CONF_TARGET,
@@ -260,35 +406,27 @@ public class AutoLiquidityManagementJob : IJob
                 SwapPublicationDeadlineMinutes = 30,
             };
 
-            var swapResponse = await _swapsService.CreateSwapOutAsync(
-                        node,
-                        selectedProvider,
-                        swapRequest,
-                        cancellationToken);
-
-            // Create SwapOut record
             var swapOut = new SwapOut
             {
                 NodeId = node.Id,
                 DestinationWalletId = node.FundsDestinationWalletId!.Value,
-                Provider = selectedProvider,
-                ProviderId = swapResponse.Id,
+                Provider = provider,
                 SatsAmount = swapAmount,
-                ServiceFeeSats = swapResponse.ServerFee,
-                OnChainFeeSats = swapResponse.OnchainFee,
-                LightningFeeSats = swapResponse.OffchainFee,
-                Status = swapResponse.Status,
                 IsManual = false, // Automatic swap
                 CreationDatetime = DateTimeOffset.UtcNow,
                 UpdateDatetime = DateTimeOffset.UtcNow,
             };
 
-            var (success, error) = await _swapOutRepository.AddAsync(swapOut);
+            var (swapResponse, success, error) = await _swapsService.CreateSwapOutAsync(
+                        node,
+                        swapOut,
+                        swapRequest,
+                        cancellationToken);
             if (!success)
             {
                 _logger.LogError("Failed to save swap out record for node {NodeName}: {Error}",
                     node.Name, error);
-                return ManageNodeLiquidityResult.Error;
+                return false;
             }
 
             _logger.LogInformation("Successfully initiated swap out {SwapId} for node {NodeName}",
@@ -304,7 +442,7 @@ public class AutoLiquidityManagementJob : IJob
                 {
                     NodeId = node.Id,
                     NodeName = node.Name,
-                    Provider = selectedProvider.ToString(),
+                    Provider = provider.ToString(),
                     AmountSats = swapAmount,
                     DestinationAddress = destinationAddress,
                     DestinationWalletId = node.FundsDestinationWalletId,
@@ -312,12 +450,12 @@ public class AutoLiquidityManagementJob : IJob
                     IsAutomatic = true
                 });
 
-            return ManageNodeLiquidityResult.Success;
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create swap out for node {NodeName}", node.Name);
-            return ManageNodeLiquidityResult.Error;
+            return false;
         }
     }
 

@@ -168,6 +168,8 @@ namespace NodeGuard.Data.Repositories
                     !string.IsNullOrEmpty(node.LoopdMacaroon)),
                 SwapProvider.FortySwap => query.Where(node => 
                     !string.IsNullOrEmpty(node.FortySwapEndpoint)),
+                // Spark is NodeGuard's own wallet, not a per-node daemon: any managed LND node can pay into it
+                SwapProvider.Spark => query,
                 _ => throw new ArgumentException($"Unsupported swap provider: {provider}", nameof(provider))
             };
 

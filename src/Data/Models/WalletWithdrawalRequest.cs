@@ -148,6 +148,11 @@ namespace NodeGuard.Data.Models
         public decimal? CustomFeeRate { get; set; }
 
         /// <summary>
+        /// Coin selection strategy requested for this withdrawal. Null means the requestor did not pick one.
+        /// </summary>
+        public CoinSelectionStrategy? CoinSelectionStrategy { get; set; }
+
+        /// <summary>
         /// Check that the number of signatures (not finalised psbt nor internal wallet psbt or template psbt are gathered and increases by one to count on the internal wallet signature
         /// </summary>
         /// <returns></returns>

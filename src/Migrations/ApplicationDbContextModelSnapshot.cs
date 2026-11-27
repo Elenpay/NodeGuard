@@ -1011,6 +1011,18 @@ namespace NodeGuard.Migrations
                     b.Property<string>("FortySwapEndpoint")
                         .HasColumnType("text");
 
+                    b.Property<long>("FortySwapMaxAmountSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("FortySwapMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("FortySwapMaxSwapsInFlight")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("FortySwapMinAmountSats")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("FortySwapWeight")
                         .HasColumnType("integer");
 
@@ -1019,6 +1031,18 @@ namespace NodeGuard.Migrations
 
                     b.Property<bool>("IsNodeDisabled")
                         .HasColumnType("boolean");
+
+                    b.Property<decimal>("LoopMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("LoopMaxSwapsInFlight")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("LoopSwapMaxAmountSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("LoopSwapMinAmountSats")
+                        .HasColumnType("bigint");
 
                     b.Property<int>("LoopSwapWeight")
                         .HasColumnType("integer");
@@ -1036,12 +1060,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("double precision");
 
                     b.Property<int?>("MaxRebalancesInFlight")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("MaxSwapRoutingFeeRatio")
-                        .HasColumnType("numeric");
-
-                    b.Property<int>("MaxSwapsInFlight")
                         .HasColumnType("integer");
 
                     b.Property<long>("MinimumBalanceThresholdSats")
@@ -1069,6 +1087,27 @@ namespace NodeGuard.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<decimal>("SparkMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("SparkMaxSwapsInFlight")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SparkPaymentTimeoutMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("SparkSwapMaxAmountSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("SparkSwapMinAmountSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SparkSwapWeight")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SparkWalletId")
+                        .HasColumnType("integer");
+
                     b.Property<TimeSpan>("SwapBudgetRefreshInterval")
                         .HasColumnType("interval");
 
@@ -1077,12 +1116,6 @@ namespace NodeGuard.Migrations
 
                     b.Property<DateTimeOffset?>("SwapBudgetStartDatetime")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("SwapMaxAmountSats")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("SwapMinAmountSats")
-                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
@@ -1093,6 +1126,8 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("PubKey")
                         .IsUnique();
+
+                    b.HasIndex("SparkWalletId");
 
                     b.ToTable("Nodes");
                 });
@@ -1185,6 +1220,39 @@ namespace NodeGuard.Migrations
                     b.ToTable("Rebalances");
                 });
 
+            modelBuilder.Entity("NodeGuard.Data.Models.SparkSignerIdentity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Account")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreationDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdentityPublicKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SeedFingerprint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdateDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeedFingerprint", "Account")
+                        .IsUnique();
+
+                    b.ToTable("SparkSignerIdentities");
+                });
+
             modelBuilder.Entity("NodeGuard.Data.Models.SwapOut", b =>
                 {
                     b.Property<int>("Id")
@@ -1195,6 +1263,9 @@ namespace NodeGuard.Migrations
 
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DestinationAddress")
+                        .HasColumnType("text");
 
                     b.Property<int?>("DestinationWalletId")
                         .HasColumnType("integer");
@@ -1214,10 +1285,19 @@ namespace NodeGuard.Migrations
                     b.Property<long?>("OnChainFeeSats")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("PaymentHash")
+                        .HasColumnType("text");
+
+                    b.Property<long?>("PayoutSats")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("Provider")
                         .HasColumnType("integer");
 
                     b.Property<string>("ProviderId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReferenceId")
                         .HasColumnType("text");
 
                     b.Property<long>("SatsAmount")
@@ -1225,6 +1305,21 @@ namespace NodeGuard.Migrations
 
                     b.Property<long?>("ServiceFeeSats")
                         .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("SparkExitDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SparkIdentity")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SparkLeafIds")
+                        .HasColumnType("text");
+
+                    b.Property<long?>("SparkReceivedSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SparkTransferId")
+                        .HasColumnType("text");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -1243,6 +1338,10 @@ namespace NodeGuard.Migrations
                     b.HasIndex("DestinationWalletId");
 
                     b.HasIndex("NodeId");
+
+                    b.HasIndex("ReferenceId")
+                        .IsUnique()
+                        .HasFilter("\"ReferenceId\" IS NOT NULL");
 
                     b.HasIndex("UserRequestorId");
 
@@ -1330,6 +1429,9 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("IsUnSortedMultiSig")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
                     b.Property<int>("MofN")
                         .HasColumnType("integer");
 
@@ -1339,6 +1441,18 @@ namespace NodeGuard.Migrations
 
                     b.Property<string>("ReferenceId")
                         .HasColumnType("text");
+
+                    b.Property<int?>("SparkAccount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SparkEncryptedMnemonic")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SparkIdentityPublicKey")
+                        .HasColumnType("text");
+
+                    b.Property<long?>("SparkMaxBalanceSats")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
@@ -1369,6 +1483,9 @@ namespace NodeGuard.Migrations
 
                     b.Property<bool>("Changeless")
                         .HasColumnType("boolean");
+
+                    b.Property<int?>("CoinSelectionStrategy")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
@@ -1776,6 +1893,11 @@ namespace NodeGuard.Migrations
                     b.HasOne("NodeGuard.Data.Models.Wallet", "FundsDestinationWallet")
                         .WithMany()
                         .HasForeignKey("FundsDestinationWalletId");
+
+                    b.HasOne("NodeGuard.Data.Models.Wallet", null)
+                        .WithMany()
+                        .HasForeignKey("SparkWalletId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("FundsDestinationWallet");
                 });

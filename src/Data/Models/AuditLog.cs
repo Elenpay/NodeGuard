@@ -161,7 +161,20 @@ public enum AuditActionType
     RebalanceInitiated,
     RebalanceProbing,
     RebalanceCompleted,
-    RebalanceRetryScheduled
+    RebalanceRetryScheduled,
+
+    // Spark transit wallet alerts
+    SparkBalanceStuck,
+    SparkExitOverdue,
+
+    // Withdrawal interceptors (SubscribeWalletEvents with intercept_withdrawals)
+    WithdrawalInterceptorConnected,
+    WithdrawalInterceptorDisconnected,
+    WithdrawalAllowedByIntegrator,
+    WithdrawalBlockedByIntegrator,
+
+    // RBF cancellation: a replacement request that sends the funds back to the wallet
+    RbfCancel
 }
 
 /// <summary>

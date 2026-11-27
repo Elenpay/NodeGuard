@@ -29,6 +29,9 @@ using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
+using Amazon.Runtime;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
@@ -128,6 +131,7 @@ namespace NodeGuard
             builder.Services.AddTransient<IForwardingHtlcEventRepository, ForwardingHtlcEventRepository>();
             builder.Services.AddTransient<IChannelRoutingStateRepository, ChannelRoutingStateRepository>();
             builder.Services.AddTransient<IChannelFeeStateRepository, ChannelFeeStateRepository>();
+            builder.Services.AddTransient<ISparkSignerIdentityRepository, SparkSignerIdentityRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
@@ -149,6 +153,27 @@ namespace NodeGuard
             builder.Services.AddTransient<NotificationService, NotificationService>();
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
+
+            // Spark (swap-out provider). Invalid SPARK_* settings fail the startup here while Spark is enabled
+            var sparkSettings = SparkSettings.FromEnvironment(Environment.GetEnvironmentVariable,
+                CurrentNetworkHelper.GetCurrentNetwork(), Constants.REMOTE_SIGNER_ENDPOINT);
+            builder.Services.AddSingleton(sparkSettings);
+            builder.Services.TryAddSingleton(TimeProvider.System);
+            builder.Services.AddTransient<ISparkSeedProtector, SparkSeedProtector>();
+            builder.Services.AddSingleton<ISparkSignerIdentityPin, SparkSignerIdentityPin>();
+            builder.Services.AddTransient<ISparkSignerProvider>(sp => new SparkSignerProvider(sparkSettings,
+                sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<ISparkSeedProtector>(),
+                sp.GetRequiredService<ISparkSignerIdentityPin>(),
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SparkSignerProvider)),
+                () => new ImmutableCredentials(Constants.AWS_ACCESS_KEY_ID, Constants.AWS_SECRET_ACCESS_KEY, null),
+                Constants.AWS_REGION));
+            builder.Services.AddSingleton<ISparkWalletService, SparkWalletService>();
+            builder.Services.AddTransient<ISparkSwapService, SparkSwapService>();
+            builder.Services.AddSingleton<ISparkGuardrails, SparkGuardrails>();
+            builder.Services.AddHostedService<SparkStartupService>();
+            builder.Services.AddSingleton<IWalletEventHub, WalletEventHub>();
+            builder.Services.AddTransient<IWithdrawalEventPublisher, WithdrawalEventPublisher>();
+            builder.Services.AddSingleton<IWithdrawalInterceptorGate, WithdrawalInterceptorGate>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
             builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();
             builder.Services.AddScoped<IAuditService, AuditService>();
@@ -191,6 +216,11 @@ namespace NodeGuard
             });
             builder.WebHost.ConfigureKestrel(options =>
             {
+                // SubscribeWalletEvents keeps a call open with nothing to send for long stretches: ping the client so
+                // proxies and load balancers do not drop the idle connection, and dead clients are noticed.
+                options.Limits.Http2.KeepAlivePingDelay = TimeSpan.FromSeconds(30);
+                options.Limits.Http2.KeepAlivePingTimeout = TimeSpan.FromSeconds(20);
+
                 // Setup a HTTP/2 endpoint without TLS.
                 options.ListenAnyIP(50051, o => o.Protocols =
                     HttpProtocols.Http2);
@@ -442,6 +472,23 @@ namespace NodeGuard
                             }
                         });
                 });
+
+                // Spark Swap Exit Job: each paid Spark swap exits on-chain to its own destination, one at a time
+                q.AddJob<SparkSwapExitJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(SparkSwapExitJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(SparkSwapExitJob))
+                        .WithIdentity($"{nameof(SparkSwapExitJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder => scheduleBuilder
+                            .WithIntervalInMinutes(sparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT))
+                            .RepeatForever());
+                });
+
                 // Audit Log Cleanup Job
                 q.AddJob<AuditLogCleanupJob>(opts =>
                 {
@@ -481,6 +528,7 @@ namespace NodeGuard
                         .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
                         .AddAspNetCoreInstrumentation()
                         .AddRuntimeInstrumentation()
+                        .AddMeter(SparkGuardrails.MeterName)
                         .AddOtlpExporter(options =>
                         {
                             options.Protocol = OtlpExportProtocol.Grpc;

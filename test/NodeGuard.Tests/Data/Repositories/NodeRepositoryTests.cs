@@ -47,4 +47,29 @@ public class NodeRepositoryTests
         result.Name.Should().Be("TestAlias");
         result.PubKey.Should().Be("TestPubKey");
     }
+
+    [Fact]
+    public async Task GetAllConfiguredByProvider_ForSpark_ReturnsEveryManagedLndNode()
+    {
+        // Arrange: Spark is NodeGuard's own wallet, so a node needs no swap daemon to pay into it
+        var dbContextFactory = SetupDbContextFactory();
+        await using (var context = await dbContextFactory.Object.CreateDbContextAsync())
+        {
+            context.Nodes.AddRange(
+                new Node { Name = "lnd-only", PubKey = "02a1", Endpoint = "alice:10009", ChannelAdminMacaroon = "mac" },
+                new Node { Name = "with-loop", PubKey = "02a2", Endpoint = "bob:10009", ChannelAdminMacaroon = "mac", LoopdEndpoint = "bob:11010", LoopdMacaroon = "loop" },
+                new Node { Name = "remote", PubKey = "02a3" });
+            await context.SaveChangesAsync();
+        }
+
+        var nodeRepository = new NodeRepository(new Mock<IRepository<Node>>().Object, null, dbContextFactory.Object, null);
+
+        // Act
+        var sparkNodes = await nodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark);
+        var loopNodes = await nodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop);
+
+        // Assert
+        sparkNodes.Select(n => n.Name).Should().BeEquivalentTo("lnd-only", "with-loop");
+        loopNodes.Select(n => n.Name).Should().BeEquivalentTo("with-loop");
+    }
 }

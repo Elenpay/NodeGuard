@@ -26,9 +26,12 @@ using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
@@ -79,7 +82,14 @@ namespace NodeGuard.Rpc
             IHtlcMonitoringScheduler? htlcMonitoringScheduler = null,
             IRebalanceService? rebalanceService = null,
             IRebalanceRepository? rebalanceRepository = null,
-            IWithdrawalRequestService? withdrawalRequestService = null)
+            IWithdrawalRequestService? withdrawalRequestService = null,
+            ISwapsService? swapsService = null,
+            ISwapOutRepository? swapOutRepository = null,
+            IAuditService? auditService = null,
+            ISparkWalletService? sparkWallet = null,
+            IWalletEventHub? walletEventHub = null,
+            ISparkSwapService? sparkSwaps = null,
+            IWithdrawalInterceptorGate? withdrawalInterceptorGate = null)
         {
             return new NodeGuardService(
                 logger ?? _logger.Object,
@@ -100,7 +110,15 @@ namespace NodeGuard.Rpc
                 htlcMonitoringScheduler ?? CreateHtlcMonitoringSchedulerMock().Object,
                 rebalanceService ?? new Mock<IRebalanceService>().Object,
                 rebalanceRepository ?? new Mock<IRebalanceRepository>().Object,
-                withdrawalRequestService ?? new Mock<IWithdrawalRequestService>().Object);
+                withdrawalRequestService ?? new Mock<IWithdrawalRequestService>().Object,
+                swapsService ?? new Mock<ISwapsService>().Object,
+                swapOutRepository ?? new Mock<ISwapOutRepository>().Object,
+                auditService ?? new Mock<IAuditService>().Object,
+                sparkWallet ?? new Mock<ISparkWalletService>().Object,
+                sparkSwaps ?? new Mock<ISparkSwapService>().Object,
+                walletEventHub ?? new Mock<IWalletEventHub>().Object,
+                withdrawalInterceptorGate ?? new Mock<IWithdrawalInterceptorGate>().Object,
+                TimeProvider.System);
         }
 
         [Fact]
@@ -118,11 +136,13 @@ namespace NodeGuard.Rpc
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey)).ReturnsAsync((Node?)null);
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
                 .ReturnsAsync(new Node { Id = 2, PubKey = destPubKey });
+            var auditService = new Mock<IAuditService>();
 
             var service = CreateNodeGuardService(
                 schedulerFactory: schedulerFactoryMock,
                 nodeRepository: nodeRepositoryMock.Object,
-                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object);
+                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object,
+                auditService: auditService.Object);
 
             var request = new OpenChannelRequest
             {
@@ -139,6 +159,206 @@ namespace NodeGuard.Rpc
 
             // Assert
             (await act.Should().ThrowAsync<RpcException>()).Which.Status.StatusCode.Should().Be(StatusCode.NotFound);
+            auditService.Verify(x => x.LogAsync(AuditActionType.Create, AuditEventType.Failure,
+                AuditObjectType.ChannelOperationRequest, null, It.IsAny<object?>()), Times.Once,
+                "a refused request is audited even though it was never persisted");
+        }
+
+        [Fact]
+        public async Task OpenChannel_SchedulingFails_MarksTheRequestFailedAndAuditsTheFailure()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var walletRepositoryMock = new Mock<IWalletRepository>();
+            var lightningServiceMock = new Mock<ILightningService>();
+            var auditService = new Mock<IAuditService>();
+            var calls = new List<string>();
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("sourcePubKey"))
+                .ReturnsAsync(new Node { Id = 1, PubKey = "sourcePubKey" });
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("destPubKey"))
+                .ReturnsAsync(new Node { Id = 2, PubKey = "destPubKey" });
+            walletRepositoryMock.Setup(repo => repo.GetById(1)).ReturnsAsync(new Wallet { Id = 1 });
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .Callback<ChannelOperationRequest>(r => r.Id = 5)
+                .ReturnsAsync((true, null));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((true, null));
+            lightningServiceMock.Setup(service => service.GenerateTemplatePSBT(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((PSBT.Parse(PSBTHex, Network.RegTest), false));
+            auditService.Setup(x => x.LogAsync(It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                    It.IsAny<AuditObjectType>(), It.IsAny<string?>(), It.IsAny<object?>()))
+                .Callback<AuditActionType, AuditEventType, AuditObjectType, string?, object?>((_, e, _, id, _) =>
+                    calls.Add($"audit {e} {id}"))
+                .Returns(Task.CompletedTask);
+
+            var scheduler = new Mock<IScheduler>();
+            scheduler.Setup(x => x.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()))
+                .Callback(() => calls.Add("schedule"))
+                .ThrowsAsync(new SchedulerException("boom"));
+            var schedulerFactory = new Mock<ISchedulerFactory>();
+            schedulerFactory.Setup(x => x.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
+
+            var service = CreateNodeGuardService(
+                walletRepository: walletRepositoryMock.Object,
+                schedulerFactory: schedulerFactory.Object,
+                nodeRepository: nodeRepositoryMock.Object,
+                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object,
+                lightningService: lightningServiceMock.Object,
+                auditService: auditService.Object);
+
+            var request = new OpenChannelRequest
+            {
+                SourcePubKey = "sourcePubKey",
+                DestinationPubKey = "destPubKey",
+                SatsAmount = 10000,
+                WalletId = 1,
+                MempoolFeeRate = FEES_TYPE.HourFee
+            };
+
+            // Act
+            var act = () => service.OpenChannel(request, TestServerCallContext.Create());
+
+            // Assert
+            await act.Should().ThrowAsync<RpcException>();
+            channelOperationRequestRepositoryMock.Verify(repo => repo.Update(It.Is<ChannelOperationRequest>(r =>
+                r.Id == 5 && r.Status == ChannelOperationRequestStatus.Failed)), Times.Once,
+                "a request that could not be scheduled must not stay pending holding its UTXOs");
+            calls.Should().Equal(new[] { "audit Success 5", "schedule", "audit Failure 5" },
+                "the creation is audited before the job can run, and the failure after it");
+        }
+
+        [Fact]
+        public async Task OpenChannel_UpdateFailsAfterScheduling_KeepsTheRequestActiveAndReturnsIt()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var walletRepositoryMock = new Mock<IWalletRepository>();
+            var lightningServiceMock = new Mock<ILightningService>();
+            var auditService = new Mock<IAuditService>();
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("sourcePubKey"))
+                .ReturnsAsync(new Node { Id = 1, PubKey = "sourcePubKey" });
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("destPubKey"))
+                .ReturnsAsync(new Node { Id = 2, PubKey = "destPubKey" });
+            walletRepositoryMock.Setup(repo => repo.GetById(1)).ReturnsAsync(new Wallet { Id = 1 });
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .Callback<ChannelOperationRequest>(r => r.Id = 5)
+                .ReturnsAsync((true, null));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((false, "db down"));
+            lightningServiceMock.Setup(service => service.GenerateTemplatePSBT(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((PSBT.Parse(PSBTHex, Network.RegTest), false));
+
+            var scheduler = new Mock<IScheduler>();
+            var schedulerFactory = new Mock<ISchedulerFactory>();
+            schedulerFactory.Setup(x => x.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
+
+            var service = CreateNodeGuardService(
+                walletRepository: walletRepositoryMock.Object,
+                schedulerFactory: schedulerFactory.Object,
+                nodeRepository: nodeRepositoryMock.Object,
+                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object,
+                lightningService: lightningServiceMock.Object,
+                auditService: auditService.Object);
+
+            var request = new OpenChannelRequest
+            {
+                SourcePubKey = "sourcePubKey",
+                DestinationPubKey = "destPubKey",
+                SatsAmount = 10000,
+                WalletId = 1,
+                MempoolFeeRate = FEES_TYPE.HourFee
+            };
+
+            // Act
+            var response = await service.OpenChannel(request, TestServerCallContext.Create());
+
+            // Assert
+            response.ChannelOperationRequestId.Should().Be(5,
+                "an error would make the client retry and open a second channel");
+            channelOperationRequestRepositoryMock.Verify(repo => repo.Update(It.Is<ChannelOperationRequest>(r =>
+                r.Status == ChannelOperationRequestStatus.Failed)), Times.Never,
+                "the scheduled job will still open the channel, so its request must stay active");
+            auditService.Verify(x => x.LogAsync(It.IsAny<AuditActionType>(), AuditEventType.Failure,
+                It.IsAny<AuditObjectType>(), It.IsAny<string?>(), It.IsAny<object?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task OpenChannel_LookupThrows_AuditsTheFailureAndReturnsInternal()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("db down"));
+            var auditService = new Mock<IAuditService>();
+
+            var service = CreateNodeGuardService(nodeRepository: nodeRepositoryMock.Object,
+                auditService: auditService.Object);
+
+            // Act
+            var act = () => service.OpenChannel(new OpenChannelRequest
+            {
+                SourcePubKey = "sourcePubKey",
+                DestinationPubKey = "destPubKey",
+                SatsAmount = 10000,
+                WalletId = 1
+            }, TestServerCallContext.Create());
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Internal);
+            auditService.Verify(x => x.LogAsync(AuditActionType.Create, AuditEventType.Failure,
+                AuditObjectType.ChannelOperationRequest, null, It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task OpenChannel_UpdateThrowsAfterScheduling_ReturnsTheRequest()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var walletRepositoryMock = new Mock<IWalletRepository>();
+            var lightningServiceMock = new Mock<ILightningService>();
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("sourcePubKey"))
+                .ReturnsAsync(new Node { Id = 1, PubKey = "sourcePubKey" });
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("destPubKey"))
+                .ReturnsAsync(new Node { Id = 2, PubKey = "destPubKey" });
+            walletRepositoryMock.Setup(repo => repo.GetById(1)).ReturnsAsync(new Wallet { Id = 1 });
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .Callback<ChannelOperationRequest>(r => r.Id = 5)
+                .ReturnsAsync((true, null));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Throws(new InvalidOperationException("db down"));
+            lightningServiceMock.Setup(service => service.GenerateTemplatePSBT(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((PSBT.Parse(PSBTHex, Network.RegTest), false));
+
+            var scheduler = new Mock<IScheduler>();
+            var schedulerFactory = new Mock<ISchedulerFactory>();
+            schedulerFactory.Setup(x => x.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
+
+            var service = CreateNodeGuardService(
+                walletRepository: walletRepositoryMock.Object,
+                schedulerFactory: schedulerFactory.Object,
+                nodeRepository: nodeRepositoryMock.Object,
+                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object,
+                lightningService: lightningServiceMock.Object);
+
+            // Act
+            var response = await service.OpenChannel(new OpenChannelRequest
+            {
+                SourcePubKey = "sourcePubKey",
+                DestinationPubKey = "destPubKey",
+                SatsAmount = 10000,
+                WalletId = 1,
+                MempoolFeeRate = FEES_TYPE.HourFee
+            }, TestServerCallContext.Create());
+
+            // Assert
+            response.ChannelOperationRequestId.Should().Be(5,
+                "an error would make the client retry and open a second channel");
         }
 
         [Fact]
@@ -226,7 +446,7 @@ namespace NodeGuard.Rpc
                 WalletId = walletId,
                 MempoolFeeRate = FEES_TYPE.HourFee
             };
-            var context = new Mock<ServerCallContext>().Object;
+            var context = TestServerCallContext.Create();
 
             // Act
             Func<Task> act = async () => await service.OpenChannel(request, context);
@@ -318,7 +538,7 @@ namespace NodeGuard.Rpc
                 },
                 MempoolFeeRate = FEES_TYPE.HourFee
             };
-            var context = new Mock<ServerCallContext>().Object;
+            var context = TestServerCallContext.Create();
 
             // Act
             Func<Task> act = async () => await service.OpenChannel(request, context);
@@ -669,6 +889,333 @@ namespace NodeGuard.Rpc
             resp.Txid.Should().Be("f103e12f02ac1e5b8826831d4fc8fdb78a707bd00c4e1f191fe5d14458d63d5a");
         }
 
+        [Theory]
+        [InlineData(COIN_SELECTION_STRATEGY.SmallestFirst, CoinSelectionStrategy.SmallestFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.BiggestFirst, CoinSelectionStrategy.BiggestFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.ClosestToTargetFirst, CoinSelectionStrategy.ClosestToTargetFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.UpToAmount, CoinSelectionStrategy.UpToAmount)]
+        public async Task RequestWithdrawal_StoresTheRequestedCoinSelectionStrategy(
+            COIN_SELECTION_STRATEGY requested, CoinSelectionStrategy expected)
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository,
+                out var mockScheduler);
+
+            // Cold wallet, so the request stops at the template PSBT instead of scheduling a PerformWithdrawalJob.
+            // Every fixture request has id 0, and the job key is the id, so the hot path collides across cases.
+            wallet.IsHotWallet = false;
+
+            var requestWithdrawalRequest = CreateWithdrawalRequest(wallet.Id, 100);
+            requestWithdrawalRequest.CoinSelectionStrategy = requested;
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler);
+
+            //Act
+            await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            walletWithdrawalRequestRepository.Verify(
+                x => x.AddAsync(It.Is<WalletWithdrawalRequest>(r => r.CoinSelectionStrategy == expected)),
+                Times.Once);
+        }
+
+        /// <summary>
+        /// SmallestFirst is the proto zero value, so a request that omits the field must not be read as a request
+        /// for SmallestFirst. Null is what tells the selection to keep behaving as it does today.
+        /// </summary>
+        [Fact]
+        public async Task RequestWithdrawal_WithoutACoinSelectionStrategy_StoresNull()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository,
+                out var mockScheduler);
+
+            wallet.IsHotWallet = false;
+
+            var requestWithdrawalRequest = CreateWithdrawalRequest(wallet.Id, 100);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler);
+
+            //Act
+            await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            requestWithdrawalRequest.HasCoinSelectionStrategy.Should().BeFalse();
+            walletWithdrawalRequestRepository.Verify(
+                x => x.AddAsync(It.Is<WalletWithdrawalRequest>(r => r.CoinSelectionStrategy == null)),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_Success_AuditsTheCreatedRequest()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            wallet.IsHotWallet = false;
+            var auditService = new Mock<IAuditService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler,
+                auditService: auditService.Object);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = "Request Withdrawal Audit Test",
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = new Money(1, MoneyUnit.BTC).Satoshi
+                }
+                }
+            };
+            //Act
+            var resp = await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            auditService.Verify(x => x.LogAsync(AuditActionType.Create, AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest, resp.RequestId.ToString(), It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_Changeless_StoresTheAmountOfItsUtxos_NotTheDeclaredOne()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var utxoList,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            wallet.IsHotWallet = false;
+            utxoList[0].Value = Money.Coins(20);
+
+            var coinSelectionService = new Mock<ICoinSelectionService>();
+            coinSelectionService
+                .Setup(x => x.GetUTXOsByOutpointAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<List<OutPoint>>()))
+                .ReturnsAsync(utxoList);
+
+            WalletWithdrawalRequest? saved = null;
+            walletWithdrawalRequestRepository.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
+                .Callback<WalletWithdrawalRequest>(x => saved = x)
+                .ReturnsAsync((true, null));
+
+            object? audited = null;
+            var auditService = new Mock<IAuditService>();
+            auditService.Setup(x => x.LogAsync(AuditActionType.Create, AuditEventType.Success,
+                    AuditObjectType.WalletWithdrawalRequest, It.IsAny<string?>(), It.IsAny<object?>()))
+                .Callback<AuditActionType, AuditEventType, AuditObjectType, string?, object?>((_, _, _, _, details) => audited = details);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler,
+                coinSelectionService: coinSelectionService.Object,
+                auditService: auditService.Object);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = "Request Withdrawal Changeless Test",
+                Changeless = true,
+                UtxosOutpoints = { utxoList[0].Outpoint.ToString() },
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = 1_000
+                }
+                }
+            };
+
+            //Act
+            await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            saved.Should().NotBeNull();
+            saved!.SatsAmount.Should().Be(Money.Coins(20).Satoshi);
+            System.Text.Json.JsonSerializer.Serialize(audited).Should().Contain("\"AmountSats\":2000000000");
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_Changeless_WithoutUtxos_IsRefused()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = "Request Withdrawal Changeless Test",
+                Changeless = true,
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = 1_000
+                }
+                }
+            };
+
+            //Act
+            var act = () => mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            walletWithdrawalRequestRepository.Verify(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_Changeless_WithAUtxoTheWalletDoesNotHave_IsRefused()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var utxoList,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            utxoList[0].Value = Money.Coins(20);
+
+            // Only the first of the two outpoints is found in the wallet
+            var coinSelectionService = new Mock<ICoinSelectionService>();
+            coinSelectionService
+                .Setup(x => x.GetUTXOsByOutpointAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<List<OutPoint>>()))
+                .ReturnsAsync(utxoList);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler,
+                coinSelectionService: coinSelectionService.Object);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = "Request Withdrawal Changeless Test",
+                Changeless = true,
+                UtxosOutpoints = { utxoList[0].Outpoint.ToString(), new OutPoint(uint256.One, 7).ToString() },
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = 1_000
+                }
+                }
+            };
+
+            //Act
+            var act = () => mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            walletWithdrawalRequestRepository.Verify(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_RefreshReturnsNull_CancelsAndAuditsTheSavedRequest()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+            walletWithdrawalRequestRepository.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
+                .Callback<WalletWithdrawalRequest>(r => r.Id = 9)
+                .ReturnsAsync((true, null));
+            walletWithdrawalRequestRepository.Setup(x => x.GetById(9)).ReturnsAsync((WalletWithdrawalRequest?)null);
+            walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+                .Returns((true, (string?)null));
+            var auditService = new Mock<IAuditService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler,
+                auditService: auditService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.RequestWithdrawal(CreateWithdrawalRequest(wallet.Id, 100),
+                TestServerCallContext.Create());
+
+            //Assert
+            await act.Should().ThrowAsync<RpcException>();
+            walletWithdrawalRequestRepository.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r =>
+                r.Id == 9 && r.Status == WalletWithdrawalRequestStatus.Cancelled)), Times.Once);
+            auditService.Verify(x => x.LogAsync(AuditActionType.Create, AuditEventType.Failure,
+                AuditObjectType.WalletWithdrawalRequest, "9", It.IsAny<object?>()), Times.Once);
+        }
+
         [Fact]
         public async Task RequestWithdrawal_NoWallet()
         {
@@ -812,7 +1359,7 @@ namespace NodeGuard.Rpc
             var psbt = SamplePsbt();
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(psbt);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).Returns(RunBeforeScheduling(psbt));
             var bitcoinService = new Mock<IBitcoinService>();
 
             var mockNodeGuardService = CreateNodeGuardService(
@@ -831,7 +1378,7 @@ namespace NodeGuard.Rpc
             resp.RequestId.Should().Be(11);
             resp.IsHotWallet.Should().BeTrue();
             resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
-            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(11), Times.Once);
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>()), Times.Once);
             bitcoinService.Verify(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>()), Times.Never,
                 "the hot-wallet execution (template + job) is the service's job");
         }
@@ -862,7 +1409,7 @@ namespace NodeGuard.Rpc
             resp.RequestId.Should().Be(11);
             resp.IsHotWallet.Should().BeFalse();
             resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
-            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>()), Times.Never,
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>(), It.IsAny<Func<Task>?>()), Times.Never,
                 "a cold-wallet bump waits for the approvers' signatures");
         }
 
@@ -907,13 +1454,15 @@ namespace NodeGuard.Rpc
             var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ThrowsAsync(new Exception("boom"));
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).ThrowsAsync(new Exception("boom"));
             var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
             walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, (string?)null));
+            var auditService = new Mock<IAuditService>();
 
             var mockNodeGuardService = CreateNodeGuardService(
                 walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
-                withdrawalRequestService: withdrawalRequestService.Object);
+                withdrawalRequestService: withdrawalRequestService.Object,
+                auditService: auditService.Object);
 
             //Act
             var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
@@ -928,6 +1477,71 @@ namespace NodeGuard.Rpc
             walletWithdrawalRequestRepository.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == 11
                 && r.Status == WalletWithdrawalRequestStatus.Cancelled)), Times.Once,
                 "a bump that could not be executed must not stay pending");
+            auditService.Verify(x => x.LogAsync(AuditActionType.BumpFee, AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Never,
+                "a replacement is only audited as a success once its PSBT exists");
+            auditService.Verify(x => x.LogAsync(AuditActionType.BumpFee, AuditEventType.Failure,
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_CancellingTheFailedBumpThrows_KeepsTheOriginalError()
+        {
+            //Arrange
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).ThrowsAsync(new NoUTXOsAvailableException());
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+                .Throws(new InvalidOperationException("context disposed"));
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.ResourceExhausted);
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_CancellingTheFailedBumpThrows_StillAuditsTheFailure()
+        {
+            //Arrange
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).ThrowsAsync(new Exception("boom"));
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+                .Throws(new InvalidOperationException("context disposed"));
+            var auditService = new Mock<IAuditService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object,
+                auditService: auditService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            await act.Should().ThrowAsync<RpcException>();
+            auditService.Verify(x => x.LogAsync(AuditActionType.BumpFee, AuditEventType.Failure,
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once);
         }
 
         [Fact]
@@ -941,7 +1555,7 @@ namespace NodeGuard.Rpc
             walletWithdrawalRequestRepository.Setup(x => x.GetByTxHash(txId)).ReturnsAsync(original);
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(SamplePsbt());
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).Returns(RunBeforeScheduling(SamplePsbt()));
 
             var mockNodeGuardService = CreateNodeGuardService(
                 walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
@@ -1034,9 +1648,11 @@ namespace NodeGuard.Rpc
             var psbt = SamplePsbt();
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateCancelRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(cancel);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(psbt);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).Returns(RunBeforeScheduling(psbt));
+            var auditService = new Mock<IAuditService>();
 
-            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object);
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object,
+                auditService: auditService.Object);
 
             //Act
             var resp = await mockNodeGuardService.CancelWithdrawal(new CancelWithdrawalRequest
@@ -1052,6 +1668,8 @@ namespace NodeGuard.Rpc
             resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
             withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()), Times.Never,
                 "a cancellation must not be turned into a fee bump");
+            auditService.Verify(x => x.LogAsync(AuditActionType.RbfCancel, AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once);
         }
 
         [Fact]
@@ -1082,7 +1700,7 @@ namespace NodeGuard.Rpc
             //Assert
             resp.RequestId.Should().Be(11);
             resp.IsHotWallet.Should().BeFalse();
-            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>()), Times.Never,
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>(), It.IsAny<Func<Task>?>()), Times.Never,
                 "a cold-wallet cancellation waits for the approvers' signatures");
         }
 
@@ -1109,6 +1727,20 @@ namespace NodeGuard.Rpc
             var exception = (await act.Should().ThrowAsync<RpcException>()).Which;
             exception.StatusCode.Should().Be(StatusCode.FailedPrecondition);
             exception.Status.Detail.Should().Be("already mined");
+        }
+
+        /// <summary>Stands in for ScheduleHotWalletWithdrawalAsync succeeding: runs the caller's pre-scheduling hook.</summary>
+        private static Func<int, Func<Task>?, Task<PSBT>> RunBeforeScheduling(PSBT psbt)
+        {
+            return async (_, beforeScheduling) =>
+            {
+                if (beforeScheduling != null)
+                {
+                    await beforeScheduling();
+                }
+
+                return psbt;
+            };
         }
 
         /// <summary>A parseable one-in/one-out PSBT; PSBT.FromTransaction refuses a transaction without inputs.</summary>
@@ -1385,6 +2017,97 @@ namespace NodeGuard.Rpc
             response.Should().NotBeNull();
             nodeRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Node>()), Times.Once);
             htlcMonitoringSchedulerMock.Verify(x => x.EnsureNodeWorkerScheduled(It.IsAny<Node>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task AddNode_EndpointAnsweredByAnotherLnd_IsRefusedAndNotAdded()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var htlcMonitoringSchedulerMock = CreateHtlcMonitoringSchedulerMock();
+            var lightningServiceMock = new Mock<ILightningService>();
+            lightningServiceMock.Setup(x => x.GetNodeIdentityError(It.IsAny<Node>()))
+                .ReturnsAsync("The LND at endpoint is otherPubKey, not node nodeName (pubKey)");
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepositoryMock.Object,
+                schedulerFactory: GetSchedulerFactoryMock(),
+                lightningService: lightningServiceMock.Object,
+                htlcMonitoringScheduler: htlcMonitoringSchedulerMock.Object);
+
+            var request = new AddNodeRequest
+            {
+                PubKey = "pubKey",
+                Name = "nodeName",
+                ChannelAdminMacaroon = "channelAdminMacaroon",
+                Endpoint = "endpoint",
+                ReturningFundsWalletId = 1,
+            };
+
+            // Act
+            var act = () => service.AddNode(request, new Mock<ServerCallContext>().Object);
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            nodeRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Node>()), Times.Never);
+            htlcMonitoringSchedulerMock.Verify(x => x.EnsureNodeWorkerScheduled(It.IsAny<Node>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task AddNode_EndpointWithoutMacaroon_IsRefusedAndNotAdded(string macaroon)
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var lightningServiceMock = new Mock<ILightningService>();
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepositoryMock.Object,
+                schedulerFactory: GetSchedulerFactoryMock(),
+                lightningService: lightningServiceMock.Object,
+                htlcMonitoringScheduler: CreateHtlcMonitoringSchedulerMock().Object);
+
+            var request = new AddNodeRequest
+            {
+                PubKey = "pubKey",
+                Name = "nodeName",
+                ChannelAdminMacaroon = macaroon,
+                Endpoint = "endpoint",
+            };
+
+            // Act
+            var act = () => service.AddNode(request, new Mock<ServerCallContext>().Object);
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            nodeRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Node>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task AddNode_BlankEndpoint_AddsAnUnmanagedNodeWithoutAskingItsIdentity(string endpoint)
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            nodeRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Node>())).ReturnsAsync((true, null));
+            var lightningServiceMock = new Mock<ILightningService>();
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepositoryMock.Object,
+                schedulerFactory: GetSchedulerFactoryMock(),
+                lightningService: lightningServiceMock.Object,
+                htlcMonitoringScheduler: CreateHtlcMonitoringSchedulerMock().Object);
+
+            var request = new AddNodeRequest { PubKey = "pubKey", Name = "nodeName", Endpoint = endpoint };
+
+            // Act
+            await service.AddNode(request, new Mock<ServerCallContext>().Object);
+
+            // Assert
+            nodeRepositoryMock.Verify(repo => repo.AddAsync(It.Is<Node>(n => n.Endpoint == null && !n.IsManaged)), Times.Once);
+            lightningServiceMock.Verify(x => x.GetNodeIdentityError(It.IsAny<Node>()), Times.Never);
         }
 
         [Fact]
@@ -2192,6 +2915,570 @@ namespace NodeGuard.Rpc
             // Assert: the RPC keeps its previous contract and returns an empty selection
             response.Confirmed.Should().BeEmpty();
             response.Unconfirmed.Should().BeEmpty();
+        }
+
+        // ── Swap-outs ──────────────────────────────────────────────────────────────────
+
+        private static readonly Node SwapNode = new() { Id = 4, Name = "alice", PubKey = "02aa", LoopMaxSwapRoutingFeeRatio = 0.005m, FortySwapMaxSwapRoutingFeeRatio = 0.005m, SparkMaxSwapRoutingFeeRatio = 0.005m };
+
+        private (NodeGuardService Service, Mock<ISwapsService> Swaps, Mock<ISwapOutRepository> SwapOuts, Mock<IAuditService> Audit)
+            SwapService(SwapProvider provider = SwapProvider.Spark, Mock<INBXplorerService>? nbXplorer = null)
+        {
+            var nodes = new Mock<INodeRepository>();
+            nodes.Setup(x => x.GetAllConfiguredByProvider(It.IsAny<SwapProvider>(), null)).ReturnsAsync(new List<Node>());
+            nodes.Setup(x => x.GetAllConfiguredByProvider(provider, null)).ReturnsAsync(new List<Node> { SwapNode });
+
+            var wallet = CreateWallet.SingleSig(CreateWallet.CreateInternalWallet());
+            wallet.Id = 3;
+            var wallets = new Mock<IWalletRepository>();
+            wallets.Setup(x => x.GetById(3)).ReturnsAsync(wallet);
+
+            nbXplorer ??= new Mock<INBXplorerService>();
+            nbXplorer.Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Deposit, 0, true,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new KeyPathInformation
+                {
+                    Address = BitcoinAddress.Create("bcrt1qcg6gkhg76snuvxu6l795yw3fx8dg8088r7zq82u60qauh7tr2kjquxfd2m", Network.RegTest)
+                });
+
+            var swaps = new Mock<ISwapsService>();
+            var swapOuts = new Mock<ISwapOutRepository>();
+            var audit = new Mock<IAuditService>();
+            return (CreateNodeGuardService(walletRepository: wallets.Object, nbXplorerService: nbXplorer.Object,
+                nodeRepository: nodes.Object, swapsService: swaps.Object, swapOutRepository: swapOuts.Object,
+                auditService: audit.Object), swaps, swapOuts, audit);
+        }
+
+        private static RequestSwapOutRequest SwapRequest(string? referenceId = "ref-1") => new()
+        {
+            NodeId = 4,
+            Provider = SWAP_PROVIDER.Spark,
+            AmountSats = 500_000,
+            WalletId = 3,
+            ReferenceId = referenceId
+        };
+
+        [Fact]
+        public async Task RequestSwapOut_CreatesAndRecordsTheSwap_ReservingNoAddressForSpark()
+        {
+            var nbXplorer = new Mock<INBXplorerService>();
+            var (service, swaps, _, audit) = SwapService(nbXplorer: nbXplorer);
+            SwapOut? recorded = null;
+            SwapOutRequest? sent = null;
+            swaps.Setup(x => x.CreateSwapOutAsync(SwapNode, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<Node, SwapOut, SwapOutRequest, CancellationToken>((_, swap, request, _) =>
+                {
+                    recorded = swap;
+                    sent = request;
+                    swap.Id = 77;
+                    swap.ProviderId = "req-1";
+                    swap.Status = SwapOutStatus.Pending;
+                    swap.DestinationAddress = request.Address;
+                })
+                .ReturnsAsync(new SwapOutCreation(new SwapResponse { Id = "req-1", HtlcAddress = string.Empty }, true, null));
+
+            var response = await service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            response.SwapId.Should().Be(77);
+            response.ProviderId.Should().Be("req-1");
+            response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending);
+            response.DestinationAddress.Should().BeEmpty("a Spark swap reserves its address when it exits");
+            recorded!.Provider.Should().Be(SwapProvider.Spark);
+            recorded.ReferenceId.Should().Be("ref-1");
+            recorded.IsManual.Should().BeTrue();
+            recorded.DestinationWalletId.Should().Be(3);
+            sent!.MaxRoutingFeesPercent.Should().Be(0.5m);
+            sent.Address.Should().BeNull();
+            nbXplorer.Verify(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(), It.IsAny<int>(),
+                It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+            audit.Verify(x => x.LogAsync(AuditActionType.SwapOutInitiated, AuditEventType.Success, AuditObjectType.SwapOut, "req-1",
+                It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_ForLoop_ReservesTheAddressItsRequestCarries()
+        {
+            var (service, swaps, _, _) = SwapService(SwapProvider.Loop);
+            SwapOutRequest? sent = null;
+            swaps.Setup(x => x.CreateSwapOutAsync(SwapNode, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<Node, SwapOut, SwapOutRequest, CancellationToken>((_, swap, request, _) =>
+                {
+                    sent = request;
+                    swap.ProviderId = "loop-1";
+                    swap.DestinationAddress = request.Address;
+                })
+                .ReturnsAsync(new SwapOutCreation(new SwapResponse { Id = "loop-1", HtlcAddress = "bcrt1phtlc" }, true, null));
+            var request = SwapRequest();
+            request.Provider = SWAP_PROVIDER.Loop;
+
+            var response = await service.RequestSwapOut(request, TestServerCallContext.Create());
+
+            sent!.Address.Should().Be("bcrt1qcg6gkhg76snuvxu6l795yw3fx8dg8088r7zq82u60qauh7tr2kjquxfd2m");
+            response.DestinationAddress.Should().Be(sent.Address);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_WithAKnownReferenceId_ReturnsTheExistingSwapWithoutCreatingAnother()
+        {
+            var (service, swaps, swapOuts, _) = SwapService();
+            swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
+            {
+                Id = 77, NodeId = 4, Provider = SwapProvider.Spark, SatsAmount = 500_000, DestinationWalletId = 3,
+                ProviderId = "req-1", Status = SwapOutStatus.Completed, DestinationAddress = "bcrt1qdest"
+            });
+
+            var response = await service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            response.SwapId.Should().Be(77);
+            response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted);
+            swaps.Verify(x => x.CreateSwapOutAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_ReusingAReferenceIdForAnotherSwap_IsRefused()
+        {
+            var (service, _, swapOuts, _) = SwapService();
+            swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
+            {
+                Id = 77, NodeId = 4, Provider = SwapProvider.Spark, SatsAmount = 1_000, DestinationWalletId = 3
+            });
+
+            var act = () => service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.AlreadyExists);
+        }
+
+        [Theory]
+        [InlineData(99, 500_000, StatusCode.InvalidArgument)]
+        [InlineData((int)SWAP_PROVIDER.Spark, 0, StatusCode.InvalidArgument)]
+        [InlineData((int)SWAP_PROVIDER.Loop, 500_000, StatusCode.FailedPrecondition)] // node not configured for Loop
+        public async Task RequestSwapOut_InvalidRequests_AreRefused(int provider, long amount, StatusCode expected)
+        {
+            var (service, _, _, _) = SwapService();
+            var request = SwapRequest();
+            request.Provider = (SWAP_PROVIDER)provider;
+            request.AmountSats = amount;
+
+            var act = () => service.RequestSwapOut(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(expected);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_WhenSparkRefuses_MapsTheReasonToAStatus()
+        {
+            var (service, swaps, _, _) = SwapService();
+            swaps.Setup(x => x.CreateSwapOutAsync(SwapNode, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SparkUnavailableException("the signer is not the expected one"));
+
+            var act = () => service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            var refusal = (await act.Should().ThrowAsync<RpcException>()).Which;
+            refusal.StatusCode.Should().Be(StatusCode.Unavailable);
+            refusal.Status.Detail.Should().Be("the signer is not the expected one");
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_ToASparkWallet_IsRefused()
+        {
+            var wallets = new Mock<IWalletRepository>();
+            wallets.Setup(x => x.GetById(3)).ReturnsAsync(new Wallet { Id = 3, Name = "transit", Kind = WalletKind.Spark, IsFinalised = true });
+            var nodes = new Mock<INodeRepository>();
+            nodes.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Spark, null)).ReturnsAsync([SwapNode]);
+            var swaps = new Mock<ISwapsService>();
+            var service = CreateNodeGuardService(walletRepository: wallets.Object, nodeRepository: nodes.Object, swapsService: swaps.Object);
+
+            var act = () => service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            swaps.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task OnChainWalletMethods_RefuseASparkWallet()
+        {
+            var wallets = new Mock<IWalletRepository>();
+            wallets.Setup(x => x.GetById(3)).ReturnsAsync(new Wallet { Id = 3, Name = "transit", Kind = WalletKind.Spark, IsFinalised = true });
+            var service = CreateNodeGuardService(walletRepository: wallets.Object);
+
+            var address = () => service.GetNewWalletAddress(new GetNewWalletAddressRequest { WalletId = 3 }, TestServerCallContext.Create());
+            var balance = () => service.GetWalletBalance(new GetWalletBalanceRequest { WalletId = 3 }, TestServerCallContext.Create());
+            var withdrawal = () => service.RequestWithdrawal(new RequestWithdrawalRequest { WalletId = 3 }, TestServerCallContext.Create());
+
+            (await address.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            (await balance.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            (await withdrawal.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+        }
+
+        // ── Spark wallets ──────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task CreateSparkWallet_ReturnsTheWalletAndItsIdentity_NeverTheMnemonic()
+        {
+            var sparkWallet = new Mock<ISparkWalletService>();
+            sparkWallet.Setup(x => x.CreateWalletAsync("transit", 0, null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SparkWalletCreation(new Wallet { Id = 7, SparkIdentityPublicKey = "02aa" }, "abandon abandon ..."));
+            var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object);
+
+            var response = await service.CreateSparkWallet(new CreateSparkWalletRequest { Name = "transit" }, TestServerCallContext.Create());
+
+            response.WalletId.Should().Be(7);
+            response.IdentityPublicKey.Should().Be("02aa");
+            response.ToString().Should().NotContain("abandon");
+        }
+
+        [Fact]
+        public async Task GetSparkWallets_ListsTheWalletsWithTheirNodes()
+        {
+            var sparkWallet = new Mock<ISparkWalletService>();
+            sparkWallet.Setup(x => x.ListWalletsAsync(false, It.IsAny<CancellationToken>())).ReturnsAsync([
+                new SparkWalletSummary(7, "transit", "02aa", 0, null, 10_000_000, [1, 2], false, DateTimeOffset.UnixEpoch),
+                new SparkWalletSummary(8, "small", "02bb", 1, 500_000, 500_000, [], false, DateTimeOffset.UnixEpoch)
+            ]);
+            var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object);
+
+            var response = await service.GetSparkWallets(new GetSparkWalletsRequest(), TestServerCallContext.Create());
+
+            response.Wallets.Should().HaveCount(2);
+            response.Wallets[0].NodeIds.Should().Equal(1, 2);
+            response.Wallets[0].HasMaxBalanceSats.Should().BeFalse();
+            response.Wallets[0].EffectiveMaxBalanceSats.Should().Be(10_000_000);
+            response.Wallets[1].MaxBalanceSats.Should().Be(500_000);
+            response.Wallets[1].Account.Should().Be(1);
+        }
+
+        [Fact]
+        public async Task WithdrawAllSparkWallet_ReturnsTheSwapsExitedNow_AndTheLeftoversExit()
+        {
+            var sparkSwaps = new Mock<ISparkSwapService>();
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(new SparkWalletRef(7), 3, It.IsAny<CancellationToken>())).ReturnsAsync(new SparkWithdrawal(
+                [
+                    new NodeGuard.Services.Spark.SparkSwapExit([1, 2], SparkExitStep.ExitSent, "exit-tx", null),
+                    new NodeGuard.Services.Spark.SparkSwapExit([3], SparkExitStep.Waiting, null, "leaves frozen")
+                ],
+                new SparkLeftoverExit("leftover-tx", "bcrt1qaddress", 120_000, 118_000), 500_000, "Spark swaps 9 are still being paid"));
+            var service = CreateNodeGuardService(sparkSwaps: sparkSwaps.Object);
+
+            var response = await service.WithdrawAllSparkWallet(new WithdrawAllSparkWalletRequest { WalletId = 7, DestinationWalletId = 3 },
+                TestServerCallContext.Create());
+
+            response.TxId.Should().Be("leftover-tx");
+            response.PayoutSats.Should().Be(118_000);
+            response.FeeSats.Should().Be(2_000);
+            response.HeldBackSats.Should().Be(500_000);
+            response.Note.Should().Be("Spark swaps 9 are still being paid");
+            response.SwapExits.Should().HaveCount(2);
+            response.SwapExits[0].SwapIds.Should().Equal(1, 2);
+            response.SwapExits[0].Step.Should().Be(SPARK_EXIT_STEP.SparkExitSent);
+            response.SwapExits[0].TxId.Should().Be("exit-tx");
+            response.SwapExits[1].Step.Should().Be(SPARK_EXIT_STEP.SparkExitWaiting);
+            response.SwapExits[1].Error.Should().Be("leaves frozen");
+        }
+
+        [Fact]
+        public async Task WithdrawAllSparkWallet_WithNothingLeftOver_HasNoTxId()
+        {
+            var sparkSwaps = new Mock<ISparkSwapService>();
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(new SparkWalletRef(7), 3, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SparkWithdrawal([], null, 0, null));
+            var service = CreateNodeGuardService(sparkSwaps: sparkSwaps.Object);
+
+            var response = await service.WithdrawAllSparkWallet(new WithdrawAllSparkWalletRequest { WalletId = 7, DestinationWalletId = 3 },
+                TestServerCallContext.Create());
+
+            response.TxId.Should().BeEmpty();
+            response.PayoutSats.Should().Be(0);
+            response.Note.Should().BeEmpty();
+            response.SwapExits.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task SparkWalletRefusals_AreMappedToStatuses()
+        {
+            var sparkWallet = new Mock<ISparkWalletService>();
+            var sparkSwaps = new Mock<ISparkSwapService>();
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(new SparkWalletRef(7), 3, It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Wallet 3 is not an available on-chain wallet to withdraw to."));
+            sparkWallet.Setup(x => x.ArchiveWalletAsync(9, It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new ArgumentException("Wallet 9 is not a Spark wallet."));
+            sparkWallet.Setup(x => x.GetSatsBalanceAsync(new SparkWalletRef(7), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SparkUnavailableException("cannot decrypt its seed"));
+            var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object, sparkSwaps: sparkSwaps.Object);
+
+            var withdraw = () => service.WithdrawAllSparkWallet(new WithdrawAllSparkWalletRequest { WalletId = 7, DestinationWalletId = 3 },
+                TestServerCallContext.Create());
+            var archive = () => service.ArchiveSparkWallet(new ArchiveSparkWalletRequest { WalletId = 9 }, TestServerCallContext.Create());
+            var balance = () => service.GetSparkWalletBalance(new GetSparkWalletBalanceRequest { WalletId = 7 }, TestServerCallContext.Create());
+
+            var refused = (await withdraw.Should().ThrowAsync<RpcException>()).Which;
+            refused.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            refused.Status.Detail.Should().Contain("not an available on-chain wallet");
+            (await archive.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            (await balance.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unavailable);
+        }
+
+        [Fact]
+        public async Task GetSwapOut_ByReferenceId_ReturnsTheSwap()
+        {
+            var (service, _, swapOuts, _) = SwapService();
+            swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
+            {
+                Id = 77, Provider = SwapProvider.Spark, ProviderId = "req-1", Status = SwapOutStatus.Completed, SatsAmount = 500_000,
+                ServiceFeeSats = 2_500, LightningFeeSats = 12, TxId = "payout-tx", DestinationAddress = "bcrt1qdest",
+                PaymentHash = "abcd", ReferenceId = "ref-1", DestinationWalletId = 3, PayoutSats = 497_500
+            });
+
+            var response = await service.GetSwapOut(new GetSwapOutRequest { ReferenceId = "ref-1" }, TestServerCallContext.Create());
+
+            response.SwapId.Should().Be(77);
+            response.Provider.Should().Be(SWAP_PROVIDER.Spark);
+            response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted);
+            response.TxId.Should().Be("payout-tx");
+            response.ServiceFeeSats.Should().Be(2_500);
+            response.PayoutSats.Should().Be(497_500);
+            response.DestinationAddress.Should().Be("bcrt1qdest");
+            response.ReferenceId.Should().Be("ref-1");
+        }
+
+        [Fact]
+        public async Task GetSwapOut_UnknownOrMissingId_IsRefused()
+        {
+            var (service, _, _, _) = SwapService();
+
+            var unknown = () => service.GetSwapOut(new GetSwapOutRequest { SwapId = 5 }, TestServerCallContext.Create());
+            var missing = () => service.GetSwapOut(new GetSwapOutRequest(), TestServerCallContext.Create());
+
+            (await unknown.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
+            (await missing.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+    
+        // ---- SubscribeWalletEvents ----------------------------------------------------------------------
+
+        private sealed class WalletEventsCall
+        {
+            public required NodeGuardService Service { get; init; }
+            public required WalletEventHub Hub { get; init; }
+            public required CancellationTokenSource Stopping { get; init; }
+            public TestAsyncStreamReader<WalletEventsClientMessage> Requests { get; } = new();
+            public TestServerStreamWriter<WalletEvent> Responses { get; } = new();
+            public CancellationTokenSource ClientCancellation { get; } = new();
+
+            public Task Start() => Service.SubscribeWalletEvents(Requests, Responses,
+                TestServerCallContext.Create(cancellationToken: ClientCancellation.Token));
+        }
+
+        private WalletEventsCall WalletEventsCallFor(params Wallet[] wallets) => WalletEventsCallFor(null, null, wallets);
+
+        private WalletEventsCall WalletEventsCallFor(IWithdrawalInterceptorGate? gate, IAuditService? auditService,
+            params Wallet[] wallets)
+        {
+            var walletRepository = new Mock<IWalletRepository>();
+            foreach (var wallet in wallets)
+                walletRepository.Setup(x => x.GetById(wallet.Id)).ReturnsAsync(wallet);
+
+            var stopping = new CancellationTokenSource();
+            var lifetime = new Mock<IHostApplicationLifetime>();
+            lifetime.Setup(x => x.ApplicationStopping).Returns(stopping.Token);
+            var hub = new WalletEventHub(NullLogger<WalletEventHub>.Instance, lifetime.Object);
+
+            return new WalletEventsCall
+            {
+                Service = CreateNodeGuardService(walletRepository: walletRepository.Object, walletEventHub: hub,
+                    withdrawalInterceptorGate: gate, auditService: auditService),
+                Hub = hub,
+                Stopping = stopping
+            };
+        }
+
+        private static WalletEventsClientMessage Subscribe(int walletId, params WALLET_EVENT_TYPE[] types) => new()
+        {
+            Subscribe = new SubscribeWalletEventsRequest { WalletId = walletId, EventTypes = { types } }
+        };
+
+        private static WalletEventsClientMessage Intercept(int walletId, params WALLET_EVENT_TYPE[] types) => new()
+        {
+            Subscribe = new SubscribeWalletEventsRequest
+            {
+                WalletId = walletId, EventTypes = { types }, InterceptWithdrawals = true
+            }
+        };
+
+        private static WalletEventsClientMessage Decision(string decisionId, bool allow, string? reason = null)
+        {
+            var decision = new WithdrawalDecision { DecisionId = decisionId, Allow = allow };
+            if (reason != null) decision.Reason = reason;
+            return new WalletEventsClientMessage { Decision = decision };
+        }
+
+        private static WalletEvent WithdrawalEvent(int walletId, WALLET_EVENT_TYPE type, int requestId) => new()
+        {
+            Type = type,
+            WalletId = walletId,
+            Withdrawal = new WithdrawalEvent { RequestId = requestId }
+        };
+
+        [Fact]
+        public async Task SubscribeWalletEvents_FirstMessageMustBeSubscribe()
+        {
+            var call = WalletEventsCallFor();
+            call.Requests.Complete();
+
+            var act = () => call.Start();
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_UnknownWallet_IsNotFound()
+        {
+            var call = WalletEventsCallFor();
+            call.Requests.Add(Subscribe(404));
+
+            var act = () => call.Start();
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
+            call.Hub.HasSubscribers(404).Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_SparkWallet_IsRefused()
+        {
+            var call = WalletEventsCallFor(new Wallet { Id = 3, Kind = WalletKind.Spark });
+            call.Requests.Add(Subscribe(3));
+
+            var act = () => call.Start();
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_StreamsTheWalletsEventsUntilTheClientLeaves()
+        {
+            var call = WalletEventsCallFor(new Wallet { Id = 1 }, new Wallet { Id = 2 });
+            call.Requests.Add(Subscribe(1));
+            var running = call.Start();
+
+            var first = await call.Responses.ReadNextAsync();
+            first.Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+            first.WalletId.Should().Be(1);
+            call.Hub.HasSubscribers(1).Should().BeTrue();
+
+            call.Hub.Publish(WithdrawalEvent(2, WALLET_EVENT_TYPE.WalletEventWithdrawalCreated, 20));
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalCreated, 10));
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast, 10));
+
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalCreated);
+            var broadcast = await call.Responses.ReadNextAsync();
+            broadcast.Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast);
+            broadcast.Withdrawal.RequestId.Should().Be(10);
+            (await call.Responses.NothingMoreWrittenAsync()).Should().BeTrue("wallet 2's event is not for this call");
+
+            await call.ClientCancellation.CancelAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+            call.Hub.HasSubscribers(1).Should().BeFalse("the subscription ends with the call");
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_EventTypeFilter_SkipsOtherTypes()
+        {
+            var call = WalletEventsCallFor(new Wallet { Id = 1 });
+            call.Requests.Add(Subscribe(1, WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast, 10));
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed, 10));
+
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed);
+            (await call.Responses.NothingMoreWrittenAsync()).Should().BeTrue();
+
+            await call.ClientCancellation.CancelAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_Shutdown_EndsTheCallAsUnavailable()
+        {
+            var call = WalletEventsCallFor(new Wallet { Id = 1 });
+            call.Requests.Add(Subscribe(1));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+
+            await call.Stopping.CancelAsync();
+
+            (await running.Invoking(t => t.WaitAsync(TimeSpan.FromSeconds(5))).Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.Unavailable);
+        }
+    
+        [Fact]
+        public async Task SubscribeWalletEvents_Interceptor_RoutesDecisionsToTheGateAndAuditsTheConnection()
+        {
+            var gate = new Mock<IWithdrawalInterceptorGate>();
+            var decided = new TaskCompletionSource<(Guid, string, bool, string?)>();
+            gate.Setup(x => x.Decide(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string?>()))
+                .Callback<Guid, string, bool, string?>((id, decisionId, allow, reason) => decided.TrySetResult((id, decisionId, allow, reason)))
+                .Returns(true);
+            var audit = new Mock<IAuditService>();
+            var call = WalletEventsCallFor(gate.Object, audit.Object, new Wallet { Id = 1 });
+            call.Requests.Add(Intercept(1));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+            var interceptor = call.Hub.GetInterceptors(1).Should().ContainSingle().Subject;
+
+            call.Requests.Add(Decision("d-1", allow: false, reason: "sanctioned"));
+
+            var (subscriptionId, decisionId, allowed, why) = await decided.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            subscriptionId.Should().Be(interceptor.Id);
+            decisionId.Should().Be("d-1");
+            allowed.Should().BeFalse();
+            why.Should().Be("sanctioned");
+
+            // Half-closing ends an interceptor's call: it can no longer answer
+            call.Requests.Complete();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+            call.Hub.GetInterceptors(1).Should().BeEmpty();
+            audit.Verify(x => x.LogAsync(AuditActionType.WithdrawalInterceptorConnected, AuditEventType.Success,
+                AuditObjectType.Wallet, "1", It.IsAny<object?>()), Times.Once);
+            audit.Verify(x => x.LogAsync(AuditActionType.WithdrawalInterceptorDisconnected, AuditEventType.Success,
+                AuditObjectType.Wallet, "1", It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_Observer_CannotDecideAndIsNotAnInterceptor()
+        {
+            var gate = new Mock<IWithdrawalInterceptorGate>();
+            var call = WalletEventsCallFor(gate.Object, null, new Wallet { Id = 1 });
+            call.Requests.Add(Subscribe(1));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+
+            call.Hub.GetInterceptors(1).Should().BeEmpty();
+            call.Requests.Add(Decision("d-1", allow: true));
+            call.Requests.Complete();
+
+            (await call.Responses.NothingMoreWrittenAsync()).Should().BeTrue();
+            running.IsCompleted.Should().BeFalse("an observer that half-closes keeps receiving events");
+            gate.Verify(x => x.Decide(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string?>()), Times.Never);
+
+            await call.ClientCancellation.CancelAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_Interceptor_GetsDecisionRequestsWhateverItsFilter()
+        {
+            var call = WalletEventsCallFor(new Mock<IWithdrawalInterceptorGate>().Object, null, new Wallet { Id = 1 });
+            call.Requests.Add(Intercept(1, WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested, 10));
+
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested);
+
+            await call.ClientCancellation.CancelAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 }

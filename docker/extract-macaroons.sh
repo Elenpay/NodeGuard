@@ -200,5 +200,27 @@ extract_loopd_node_data "BOB" "nodeguard-loopd-bob-1" "localhost:11010"
 # Carol Loopd
 extract_loopd_node_data "CAROL" "nodeguard-loopd-carol-1" "localhost:11011"
 
+# Spark: when the local Spark network (spark compose profile) is up, point NodeGuard at it
+echo -e "${GREEN}=== Spark ===${NC}"
+SPARK_OPERATOR=$(docker ps --format "{{.Names}}" | grep -E "(^|-)spark-operator-0(-1)?$" | head -n 1 || true)
+if [ -n "${SPARK_OPERATOR}" ]; then
+    SPARK_TLS_DIR="${SCRIPT_DIR}/../src/.spark-tls"
+    mkdir -p "${SPARK_TLS_DIR}"
+    for i in 0 1 2; do
+        docker cp "${SPARK_OPERATOR}:/opt/spark/tls/server_${i}.crt" "${SPARK_TLS_DIR}/server_${i}.crt" > /dev/null
+    done
+    {
+        echo "# Local Spark network (docker/spark): operators, SSP and their pinned self-signed certificates"
+        echo "SPARK_ENABLED=true"
+        echo "SPARK_OPERATORS=\"https://localhost:8535|0000000000000000000000000000000000000000000000000000000000000001|0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510;https://localhost:8536|0000000000000000000000000000000000000000000000000000000000000002|0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27;https://localhost:8537|0000000000000000000000000000000000000000000000000000000000000003|0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6\""
+        echo "SPARK_SSP_URL=\"http://localhost:5100/graphql/spark/2025-03-19\""
+        echo "SPARK_OPERATOR_CERTS_DIR=\"$(cd "${SPARK_TLS_DIR}" && pwd)\""
+        echo ""
+    } >> "${OUTPUT_FILE}"
+    echo -e "${GREEN}✓ Spark enabled against the local Spark network${NC}"
+else
+    echo -e "${YELLOW}⚠ Local Spark network not running: Spark stays off (just spark-up to start it)${NC}"
+fi
+
 echo -e "${GREEN}=== Extraction Complete ===${NC}"
 echo -e "${YELLOW}Environment file created: ${OUTPUT_FILE}${NC}"

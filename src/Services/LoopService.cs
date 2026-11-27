@@ -192,6 +192,8 @@ public class LoopService : ILoopService
         {
             Id = Convert.ToHexString(response.IdBytes.ToByteArray()),
             HtlcAddress = response.HtlcAddressP2Tr,
+            // A Loop swap is identified by its swap hash, the payment hash of the swap invoice
+            PaymentHash = Convert.ToHexString(response.IdBytes.ToByteArray()).ToLowerInvariant(),
             Amount = response.Amt,
             OffchainFee = response.CostOffchain,
             OnchainFee = response.CostOnchain,

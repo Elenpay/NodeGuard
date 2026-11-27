@@ -22,6 +22,7 @@ using Grpc.Core;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -38,6 +39,7 @@ public class MonitorSwapsJobTests
     private readonly Mock<IScheduler> _schedulerMock;
 
     private readonly MonitorSwapsJob _job;
+    private readonly Mock<ISparkGuardrails> _sparkGuardrailsMock = new();
 
     public MonitorSwapsJobTests()
     {
@@ -60,7 +62,9 @@ public class MonitorSwapsJobTests
             _nodeRepositoryMock.Object,
             _swapOutRepositoryMock.Object,
             _swapsServiceMock.Object,
-            _auditServiceMock.Object);
+            _auditServiceMock.Object,
+            SparkSettings.Disabled,
+            _sparkGuardrailsMock.Object);
     }
 
     [Fact]
@@ -290,6 +294,46 @@ public class MonitorSwapsJobTests
             Times.Once);
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(10L, true)]
+    public async Task Execute_WhileASwapIsPending_KeepsItsFeesUpToDate(long? savedServiceFee, bool upToDate)
+    {
+        var loopNode = new Node { Id = 23, Endpoint = "localhost:10023", ChannelAdminMacaroon = "mac", LoopdEndpoint = "localhost:11023", LoopdMacaroon = "loopmac" };
+        var pendingSwap = new SwapOut
+        {
+            Id = 503,
+            NodeId = loopNode.Id,
+            Provider = SwapProvider.Loop,
+            ProviderId = "loop-pending-503",
+            Status = SwapOutStatus.Pending,
+            SatsAmount = 250_000,
+            ServiceFeeSats = savedServiceFee,
+            LightningFeeSats = upToDate ? 20 : null,
+            OnChainFeeSats = upToDate ? 0 : null
+        };
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null)).ReturnsAsync(new List<Node> { loopNode });
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null)).ReturnsAsync(new List<Node>());
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { pendingSwap });
+        _swapsServiceMock
+            .Setup(x => x.GetSwapAsync(loopNode, SwapProvider.Loop, "loop-pending-503", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapResponse
+            {
+                Id = "loop-pending-503", HtlcAddress = "bc1qpending", Status = SwapOutStatus.Pending,
+                ServerFee = 10, OffchainFee = 20, OnchainFee = 0
+            });
+        _swapOutRepositoryMock.Setup(x => x.Update(It.IsAny<SwapOut>())).Returns((true, null));
+
+        await _job.Execute(_jobExecutionContextMock.Object);
+
+        _swapOutRepositoryMock.Verify(x => x.Update(It.Is<SwapOut>(s =>
+                s.Id == pendingSwap.Id && s.Status == SwapOutStatus.Pending &&
+                s.ServiceFeeSats == 10 && s.LightningFeeSats == 20 && s.OnChainFeeSats == 0)),
+            upToDate ? Times.Never() : Times.Once());
+        _auditServiceMock.Verify(x => x.LogSystemAsync(It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+            It.IsAny<AuditObjectType>(), It.IsAny<string?>(), It.IsAny<object?>()), Times.Never);
+    }
+
     [Fact]
     public async Task Execute_WhenProviderMarksSwapFailed_UpdatesSwapAndAuditsFailure()
     {
@@ -357,5 +401,76 @@ public class MonitorSwapsJobTests
                 pendingSwap.ProviderId,
                 It.IsAny<object?>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_WithSparkEnabled_FollowsSparkSwapsUntilTheirPaymentSettles()
+    {
+        // Arrange: any LND node can pay into Spark, so the Spark node list is every node
+        var node = new Node { Id = 31, Endpoint = "localhost:10031", ChannelAdminMacaroon = "mac" };
+        var unpaid = new SwapOut
+        {
+            Id = 601,
+            NodeId = node.Id,
+            Provider = SwapProvider.Spark,
+            ProviderId = "req-601",
+            Status = SwapOutStatus.Pending,
+            SatsAmount = 500_000
+        };
+        var paid = new SwapOut
+        {
+            Id = 603,
+            NodeId = node.Id,
+            Provider = SwapProvider.Spark,
+            ProviderId = "req-603",
+            Status = SwapOutStatus.Pending,
+            SatsAmount = 500_000,
+            LightningFeeSats = 12
+        };
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null)).ReturnsAsync(new List<Node>());
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null)).ReturnsAsync(new List<Node>());
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Spark, null)).ReturnsAsync(new List<Node> { node });
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { unpaid, paid });
+        _swapsServiceMock.Setup(x => x.AdvanceSwapAsync(node, unpaid, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapResponse { Id = "req-601", HtlcAddress = string.Empty, Status = SwapOutStatus.Pending });
+
+        _sparkGuardrailsMock.Setup(x => x.CheckAsync(It.IsAny<IReadOnlyCollection<SwapOut>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SparkAlert>
+            {
+                new(AuditActionType.SparkBalanceStuck, AuditObjectType.Wallet, "02spark", "stuck", new { HeldSats = 1 })
+            });
+
+        var job = new MonitorSwapsJob(_loggerMock.Object, _schedulerFactoryMock.Object, _nodeRepositoryMock.Object,
+            _swapOutRepositoryMock.Object, _swapsServiceMock.Object, _auditServiceMock.Object, new SparkSettings { Enabled = true },
+            _sparkGuardrailsMock.Object);
+
+        // Act
+        await job.Execute(_jobExecutionContextMock.Object);
+
+        // Assert: a paid Spark swap is SparkSwapExitJob's, and an unpaid one's zero fees are not saved (a routing
+        // fee would mark it paid)
+        _swapsServiceMock.Verify(x => x.AdvanceSwapAsync(node, unpaid, It.IsAny<CancellationToken>()), Times.Once);
+        _swapsServiceMock.Verify(x => x.AdvanceSwapAsync(It.IsAny<Node>(), paid, It.IsAny<CancellationToken>()), Times.Never);
+        _swapsServiceMock.Verify(x => x.GetSwapAsync(It.IsAny<Node>(), SwapProvider.Spark, It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _swapOutRepositoryMock.Verify(x => x.Update(It.IsAny<SwapOut>()), Times.Never);
+        Assert.Null(unpaid.LightningFeeSats);
+        _auditServiceMock.Verify(x => x.LogSystemAsync(AuditActionType.SparkBalanceStuck, AuditEventType.Failure,
+            AuditObjectType.Wallet, "02spark", It.IsAny<object?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_WithSparkDisabled_LeavesSparkSwapsAlone()
+    {
+        var sparkSwap = new SwapOut { Id = 602, NodeId = 31, Provider = SwapProvider.Spark, ProviderId = "req-602", Status = SwapOutStatus.Pending };
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null)).ReturnsAsync(new List<Node>());
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null)).ReturnsAsync(new List<Node>());
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { sparkSwap });
+
+        await _job.Execute(_jobExecutionContextMock.Object);
+
+        _nodeRepositoryMock.Verify(x => x.GetAllConfiguredByProvider(SwapProvider.Spark, It.IsAny<string?>()), Times.Never);
+        _swapsServiceMock.Verify(x => x.AdvanceSwapAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<CancellationToken>()), Times.Never);
+        _sparkGuardrailsMock.Verify(x => x.CheckAsync(It.IsAny<IReadOnlyCollection<SwapOut>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

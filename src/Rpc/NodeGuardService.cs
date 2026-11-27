@@ -5,6 +5,7 @@ using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Grpc.Core;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -68,6 +69,13 @@ public interface INodeGuardService
     Task<GetRebalancesResponse> GetRebalances(GetRebalancesRequest request, ServerCallContext context);
 
     Task<SetChannelFeePolicyResponse> SetChannelFeePolicy(SetChannelFeePolicyRequest request, ServerCallContext context);
+
+    Task<RequestSwapOutResponse> RequestSwapOut(RequestSwapOutRequest request, ServerCallContext context);
+
+    Task<GetSwapOutResponse> GetSwapOut(GetSwapOutRequest request, ServerCallContext context);
+
+    Task SubscribeWalletEvents(IAsyncStreamReader<WalletEventsClientMessage> requestStream,
+        IServerStreamWriter<WalletEvent> responseStream, ServerCallContext context);
 }
 
 /// <summary>
@@ -95,6 +103,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IRebalanceService _rebalanceService;
     private readonly IRebalanceRepository _rebalanceRepository;
     private readonly IWithdrawalRequestService _withdrawalRequestService;
+    private readonly ISwapsService _swapsService;
+    private readonly ISwapOutRepository _swapOutRepository;
+    private readonly IAuditService _auditService;
+    private readonly ISparkWalletService _sparkWallet;
+    private readonly ISparkSwapService _sparkSwaps;
+    private readonly IWalletEventHub _walletEventHub;
+    private readonly IWithdrawalInterceptorGate _withdrawalInterceptorGate;
+    private readonly TimeProvider _timeProvider;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -114,9 +130,25 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IHtlcMonitoringScheduler htlcMonitoringScheduler,
         IRebalanceService rebalanceService,
         IRebalanceRepository rebalanceRepository,
-        IWithdrawalRequestService withdrawalRequestService
+        IWithdrawalRequestService withdrawalRequestService,
+        ISwapsService swapsService,
+        ISwapOutRepository swapOutRepository,
+        IAuditService auditService,
+        ISparkWalletService sparkWallet,
+        ISparkSwapService sparkSwaps,
+        IWalletEventHub walletEventHub,
+        IWithdrawalInterceptorGate withdrawalInterceptorGate,
+        TimeProvider timeProvider
     )
     {
+        _walletEventHub = walletEventHub;
+        _withdrawalInterceptorGate = withdrawalInterceptorGate;
+        _timeProvider = timeProvider;
+        _sparkWallet = sparkWallet;
+        _sparkSwaps = sparkSwaps;
+        _swapsService = swapsService;
+        _swapOutRepository = swapOutRepository;
+        _auditService = auditService;
         _logger = logger;
         _liquidityRuleRepository = liquidityRuleRepository;
         _walletRepository = walletRepository;
@@ -177,6 +209,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
 
+        RefuseSparkWallet(wallet);
+
         var derivationStrategy = wallet.GetDerivationStrategy();
         if (derivationStrategy == null)
         {
@@ -226,7 +260,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         foreach (var destination in destinations)
         {
-            if (destination.AmountSats <= 0)
+            // A changeless withdrawal takes its amount from its UTXOs
+            if (!isChangeless && destination.AmountSats <= 0)
             {
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Amount must be greater than 0"));
             }
@@ -239,10 +274,34 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
     }
 
+    /// <summary>
+    /// Maps the proto coin selection strategy onto the domain one. The two enums are kept in sync by hand, so
+    /// this switches on the members instead of casting the ordinal. <paramref name="unknownStrategyException"/>
+    /// builds the exception thrown for an unmapped member, so each caller keeps its own error contract.
+    /// </summary>
+    private static CoinSelectionStrategy MapCoinSelectionStrategy(COIN_SELECTION_STRATEGY strategy,
+        Func<COIN_SELECTION_STRATEGY, Exception> unknownStrategyException)
+    {
+        return strategy switch
+        {
+            COIN_SELECTION_STRATEGY.SmallestFirst => CoinSelectionStrategy.SmallestFirst,
+            COIN_SELECTION_STRATEGY.BiggestFirst => CoinSelectionStrategy.BiggestFirst,
+            COIN_SELECTION_STRATEGY.ClosestToTargetFirst => CoinSelectionStrategy.ClosestToTargetFirst,
+            COIN_SELECTION_STRATEGY.UpToAmount => CoinSelectionStrategy.UpToAmount,
+            _ => throw unknownStrategyException(strategy)
+        };
+    }
+
     public override async Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request,
         ServerCallContext context)
     {
         WalletWithdrawalRequest? withdrawalRequest = null;
+        var auditDetails = new
+        {
+            request.WalletId,
+            Destinations = request.Destinations.Select(d => new { d.Address, d.AmountSats }),
+            request.ReferenceId
+        };
         try
         {
             //We get the wallet
@@ -253,6 +312,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
             }
 
+            RefuseSparkWallet(wallet);
+
             // Validate destinations
             ValidateWithdrawalDestinations(request.Destinations, request.Changeless);
 
@@ -261,10 +322,22 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             if (request.Changeless)
             {
+                if (request.UtxosOutpoints.Count == 0)
+                {
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless withdrawal requires utxos"));
+                }
+
                 foreach (var outpoint in request.UtxosOutpoints)
                 {
-                    outpoints.Add(OutPoint.Parse(outpoint));
+                    if (!OutPoint.TryParse(outpoint, out var parsedOutpoint))
+                    {
+                        throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid utxo outpoint {outpoint}"));
+                    }
+
+                    outpoints.Add(parsedOutpoint!);
                 }
+
+                outpoints = outpoints.Distinct().ToList();
 
                 // Search the utxos and lock them
                 var derivationStrategyBase = wallet.GetDerivationStrategy();
@@ -274,14 +347,36 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
 
+                // Every outpoint has to be spendable: the withdrawal sends exactly these UTXOs
+                if (utxos.Count != outpoints.Count)
+                {
+                    throw new RpcException(new Status(StatusCode.InvalidArgument,
+                        "Some utxos are not confirmed UTXOs of the wallet"));
+                }
             }
+
+            // A changeless withdrawal sends its UTXOs in full, so that total is its amount whatever the caller
+            // declared: the amount is what the audit, the wallet events and the withdrawal interceptor are shown
+            var changelessSats = utxos.Sum(u => ((Money)u.Value).Satoshi);
 
             // Create destination objects for the withdrawal request
             var withdrawalDestinations = request.Destinations.Select(d => new WalletWithdrawalRequestDestination()
             {
                 Address = d.Address,
-                Amount = new Money(d.AmountSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC),
+                Amount = new Money(request.Changeless ? changelessSats : d.AmountSats, MoneyUnit.Satoshi)
+                    .ToDecimal(MoneyUnit.BTC),
             }).ToList();
+
+            auditDetails = new
+            {
+                request.WalletId,
+                Destinations = withdrawalDestinations.Select(d => new
+                {
+                    d.Address,
+                    AmountSats = new Money(d.Amount, MoneyUnit.BTC).Satoshi
+                }),
+                request.ReferenceId
+            };
 
             withdrawalRequest = new WalletWithdrawalRequest()
             {
@@ -295,7 +390,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Changeless = request.Changeless,
                 MempoolRecommendedFeesType = (MempoolRecommendedFeesType)request.MempoolFeeRate,
                 CustomFeeRate = request.CustomFeeRate,
-                ReferenceId = request.ReferenceId
+                ReferenceId = request.ReferenceId,
+                CoinSelectionStrategy = request.HasCoinSelectionStrategy
+                    ? MapCoinSelectionStrategy(request.CoinSelectionStrategy,
+                        strategy => new RpcException(new Status(StatusCode.InvalidArgument,
+                            $"Unknown coin selection strategy: {strategy}")))
+                    : null
             };
 
             //Save withdrawal request
@@ -319,18 +419,26 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     BitcoinRequestType.WalletWithdrawal);
             }
 
-            // Update to refresh from db
-            withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
-
-            if (!withdrawalSaved.Item1)
-            {
-                _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
-                throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
-            }
+            // Update to refresh from db. A missing row keeps the saved instance so the failure handling can still
+            // cancel and audit it
+            withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequest.Id)
+                                ?? throw new InvalidOperationException(
+                                    $"Withdrawal request {withdrawalRequest.Id} not found after saving it");
 
             // Template PSBT generation with SIGHASH_ALL
-            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ??
-            throw new ArgumentException(nameof(withdrawalRequest)));
+            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+            // Built before the job is scheduled: once it is, nothing may fail and cancel a request the job will execute
+            var response = new RequestWithdrawalResponse
+            {
+                IsHotWallet = wallet.IsHotWallet,
+                Txid = psbt.GetGlobalTransaction().GetHash().ToString(),
+                RequestId = withdrawalRequest.Id
+            };
+
+            // Audited before the hot wallet job is scheduled, so the creation precedes the job's own audits
+            await _auditService.LogAsync(AuditActionType.Create, AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest, withdrawalRequest.Id.ToString(), auditDetails);
 
             // If the wallet is hot, we send the withdrawal request to the embedded or remote signer
             if (wallet.IsHotWallet)
@@ -341,37 +449,77 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 await _scheduler.ScheduleJob(job.Job, job.Trigger);
             }
 
-            var response = new RequestWithdrawalResponse
-            {
-                IsHotWallet = wallet.IsHotWallet,
-                Txid = psbt.GetGlobalTransaction().GetHash().ToString(),
-                RequestId = withdrawalRequest.Id
-            };
-
             return response;
         }
         catch (NoUTXOsAvailableException)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await CancelFailedWithdrawalRequestAsync(withdrawalRequest, AuditActionType.Create, auditDetails,
+                "No available UTXOs for wallet");
             _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
         catch (NotEnoughBalanceInWalletException e)
         {
+            await CancelFailedWithdrawalRequestAsync(withdrawalRequest, AuditActionType.Create, auditDetails, e.Message);
             _logger.LogError(e.Message);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, e.Message));
         }
         catch (RpcException e)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await CancelFailedWithdrawalRequestAsync(withdrawalRequest, AuditActionType.Create, auditDetails,
+                e.Status.Detail);
             _logger.LogError(e.Message);
             throw new RpcException(new Status(e.Status.StatusCode, e.Status.Detail));
         }
         catch (Exception e)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await CancelFailedWithdrawalRequestAsync(withdrawalRequest, AuditActionType.Create, auditDetails,
+                e.Message);
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
+        }
+    }
+
+    private Task CancelFailedWithdrawalRequestAsync(WalletWithdrawalRequest? withdrawalRequest,
+        AuditActionType actionType, object details, string? error)
+    {
+        int? persistedRequestId = withdrawalRequest is { Id: > 0 } ? withdrawalRequest.Id : null;
+
+        return FailRequestAndAuditAsync(persistedRequestId, () => MarkWithdrawalRequestCancelled(withdrawalRequest),
+            actionType, AuditObjectType.WalletWithdrawalRequest, details, error);
+    }
+
+    /// <summary>
+    /// Audits a failed request and, if it was already persisted, takes it out of the active states with
+    /// <paramref name="markFailed"/> (which also releases its locked UTXOs, held only by active requests), so the
+    /// request id has a record of why it never went out. Requests refused before being persisted are audited
+    /// without an id.
+    /// </summary>
+    /// <remarks>Runs inside catch blocks, so it never throws: that would replace the error being reported.</remarks>
+    private async Task FailRequestAndAuditAsync(int? persistedRequestId, Action markFailed,
+        AuditActionType actionType, AuditObjectType objectType, object details, string? error)
+    {
+        // Separate tries so the failure is audited even if marking the request fails
+        if (persistedRequestId != null)
+        {
+            try
+            {
+                markFailed();
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error marking {ObjectType} {RequestId} as failed", objectType, persistedRequestId);
+            }
+        }
+
+        try
+        {
+            await _auditService.LogAsync(actionType, AuditEventType.Failure, objectType,
+                persistedRequestId?.ToString(), new { Request = details, Error = error });
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error auditing the failure of {ObjectType} {RequestId}", objectType, persistedRequestId);
         }
     }
 
@@ -440,7 +588,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         MempoolRecommendedFeesType feeType, decimal? customFeeRate, bool cancellation)
     {
         var action = cancellation ? "cancellation" : "fee bump";
+        var auditAction = cancellation ? AuditActionType.RbfCancel : AuditActionType.BumpFee;
         WalletWithdrawalRequest? replacement = null;
+        // Until the replacement exists, failures can only be tied to the requested target
+        object auditDetails = new { Target = target.ToString() };
         try
         {
             var originalRequestId = await ResolveReplacementTargetAsync(target);
@@ -449,11 +600,27 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 ? await _withdrawalRequestService.CreateCancelRequestAsync(originalRequestId, feeType, customFeeRate)
                 : await _withdrawalRequestService.CreateBumpRequestAsync(originalRequestId, feeType, customFeeRate);
 
-            var isHotWallet = replacement.Wallet?.IsHotWallet ?? false;
+            auditDetails = new { replacement.WalletId, ReplacedRequestId = originalRequestId, replacement.ReferenceId };
 
-            var psbt = isHotWallet
-                ? await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(replacement.Id)
-                : await _bitcoinService.GenerateTemplatePSBT(replacement);
+            var isHotWallet = replacement.Wallet?.IsHotWallet ?? false;
+            Task AuditSuccessAsync()
+            {
+                return _auditService.LogAsync(auditAction, AuditEventType.Success,
+                    AuditObjectType.WalletWithdrawalRequest, replacement.Id.ToString(), auditDetails);
+            }
+
+            PSBT psbt;
+            if (isHotWallet)
+            {
+                // Audited once the PSBT exists but before the job is scheduled, so the replacement precedes the job's
+                // own audits
+                psbt = await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(replacement.Id, AuditSuccessAsync);
+            }
+            else
+            {
+                psbt = await _bitcoinService.GenerateTemplatePSBT(replacement);
+                await AuditSuccessAsync();
+            }
 
             return (replacement.Id, psbt.GetGlobalTransaction().GetHash().ToString(), isHotWallet);
         }
@@ -461,29 +628,30 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             _logger.LogWarning("RBF {Action} of withdrawal request {Target} refused ({Reason}): {Message}",
                 action, target, e.Reason, e.Message);
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails, e.Message);
             throw new RpcException(new Status(ToStatusCode(e.Reason), e.Message));
         }
         catch (NoUTXOsAvailableException)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails,
+                "No available UTXOs for wallet");
             _logger.LogError("No available UTXOs for the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
         catch (ShowToUserException e)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails, e.Message);
             _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
         }
-        catch (RpcException)
+        catch (RpcException e)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails, e.Status.Detail);
             throw;
         }
         catch (Exception e)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails, e.Message);
             _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.Internal, $"Error in the RBF {action} of the withdrawal request"));
         }
@@ -599,6 +767,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
             }
 
+            RefuseSparkWallet(wallet);
+
             var balance = await _lightningService.GetWalletBalance(wallet);
             if (balance == null)
             {
@@ -610,6 +780,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 ConfirmedBalance = ((Money)balance.Confirmed).Satoshi,
                 UnconfirmedBalance = ((Money)balance.Unconfirmed).Satoshi
             };
+        }
+        catch (RpcException e) when (e.StatusCode == StatusCode.FailedPrecondition)
+        {
+            throw;
         }
         catch (Exception e)
         {
@@ -627,10 +801,32 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             Name = request.Name,
             Description = request.Description,
             ChannelAdminMacaroon = request.ChannelAdminMacaroon,
-            Endpoint = request.Endpoint,
+            // proto3 sends "" for an unset endpoint, and any non-null endpoint makes the node managed
+            Endpoint = string.IsNullOrWhiteSpace(request.Endpoint) ? null : request.Endpoint,
             AutosweepEnabled = request.AutosweepEnabled,
             FundsDestinationWalletId = request.ReturningFundsWalletId,
         };
+
+        if (request.ReturningFundsWalletId != 0)
+        {
+            RefuseSparkWallet(await _walletRepository.GetById(request.ReturningFundsWalletId));
+        }
+
+        // A managed node is only added when the LND at its endpoint holds its key
+        if (node.Endpoint != null)
+        {
+            if (string.IsNullOrWhiteSpace(node.ChannelAdminMacaroon))
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition,
+                    "A managed node needs its channel admin macaroon to confirm its identity"));
+            }
+
+            var identityError = await _lightningService.GetNodeIdentityError(node);
+            if (identityError != null)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, identityError));
+            }
+        }
 
         try
         {
@@ -684,36 +880,69 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     public override async Task<OpenChannelResponse> OpenChannel(OpenChannelRequest request, ServerCallContext context)
     {
-        var sourceNode = await _nodeRepository.GetByPubkey(request.SourcePubKey);
-        if (sourceNode == null)
+        var auditDetails = new
         {
-            throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
-        }
+            request.WalletId,
+            request.SatsAmount,
+            request.SourcePubKey,
+            request.DestinationPubKey
+        };
 
-        var destNode = await _nodeRepository.GetByPubkey(request.DestinationPubKey);
-        if (destNode == null)
+        NodeGuard.Data.Models.Node? sourceNode;
+        NodeGuard.Data.Models.Node? destNode;
+        Wallet? wallet;
+        try
         {
-            throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
-        }
+            sourceNode = await _nodeRepository.GetByPubkey(request.SourcePubKey);
+            if (sourceNode == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
+            }
 
-        var wallet = await _walletRepository.GetById(request.WalletId);
-        if (wallet == null)
-        {
-            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
-        }
+            destNode = await _nodeRepository.GetByPubkey(request.DestinationPubKey);
+            if (destNode == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
+            }
 
-        if (request.MempoolFeeRate == FEES_TYPE.CustomFee && request.CustomFeeRate == 0)
-        {
-            throw new RpcException(
-                new Status(StatusCode.InvalidArgument, "Mempool fee rate configuration is not valid"));
-        }
+            wallet = await _walletRepository.GetById(request.WalletId);
+            if (wallet == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+            }
 
-        if (request.Changeless && request.UtxosOutpoints.Count == 0)
+            RefuseSparkWallet(wallet);
+
+            if (request.MempoolFeeRate == FEES_TYPE.CustomFee && request.CustomFeeRate == 0)
+            {
+                throw new RpcException(
+                    new Status(StatusCode.InvalidArgument, "Mempool fee rate configuration is not valid"));
+            }
+
+            if (request.Changeless && request.UtxosOutpoints.Count == 0)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
+            }
+        }
+        catch (Exception e)
         {
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
+            // Nothing is persisted yet, so the refusal is only audited
+            var error = e is RpcException rpcException ? rpcException.Status.Detail : e.Message;
+            await _auditService.LogAsync(AuditActionType.Create, AuditEventType.Failure,
+                AuditObjectType.ChannelOperationRequest, null, new { Request = auditDetails, Error = error });
+
+            if (e is RpcException)
+            {
+                throw;
+            }
+
+            _logger?.LogError(e, "Error validating channel open request through gRPC");
+            throw new RpcException(new Status(StatusCode.Internal, "Error validating the channel open request"));
         }
 
         int requestId;
+        ChannelOperationRequest? channelOperationRequest = null;
+        var jobScheduled = false;
 
         try
         {
@@ -754,7 +983,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.NotFound, "Custom fee rate is required"));
             }
 
-            var channelOperationRequest = new ChannelOperationRequest
+            channelOperationRequest = new ChannelOperationRequest
             {
                 SatsAmount = request.SatsAmount,
                 Description = $"Channel open from {sourceNode.PubKey} to {destNode.PubKey} (API)",
@@ -791,8 +1020,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 (await _lightningService.GenerateTemplatePSBT(channelOperationRequest));
             if (templatePsbt == null)
             {
-                channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
-                _channelOperationRequestRepository.Update(channelOperationRequest);
+                // The catch below marks the request as failed
                 if (noUtxosAvailable)
                 {
                     _logger?.LogError("No UTXOs available for opening the channel");
@@ -814,20 +1042,38 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
             var job = RetriableJob.Create<ChannelOpenJob>(map, channelOperationRequest.Id.ToString(), retryList);
+
+            // Audited before the job is scheduled, so the creation precedes the job's own audits
+            await _auditService.LogAsync(AuditActionType.Create, AuditEventType.Success,
+                AuditObjectType.ChannelOperationRequest, channelOperationRequest.Id.ToString(), auditDetails);
+
             await scheduler.ScheduleJob(job.Job, job.Trigger);
+            jobScheduled = true;
 
             var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
 
+            // The job is scheduled and will open the channel, so failing the call here would only make the client
+            // retry and open a second one
             if (!jobUpdateResult.Item1)
             {
-                _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
-                throw new RpcException(new Status(StatusCode.Internal, "Error updating channel operation request"));
+                _logger?.LogError("Error updating channel operation request {RequestId} after scheduling its job: {error}",
+                    channelOperationRequest.Id, jobUpdateResult.Item2);
             }
 
             requestId = channelOperationRequest.Id;
         }
+        catch (Exception e) when (jobScheduled)
+        {
+            // The job is scheduled and will open the channel, so the request stays active and audited as created.
+            // Failing the call would only make the client retry and open a second one
+            _logger?.LogError(e, "Error opening channel through gRPC after scheduling the job of request {RequestId}",
+                channelOperationRequest!.Id);
+            requestId = channelOperationRequest.Id;
+        }
         catch (Exception e)
         {
+            await FailChannelOpenRequestAsync(channelOperationRequest, auditDetails, e.Message);
+
             _logger?.LogError(e, "Error opening channel through gRPC");
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }
@@ -837,6 +1083,26 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             ChannelOperationRequestId = requestId
         };
+    }
+
+    private Task FailChannelOpenRequestAsync(ChannelOperationRequest? channelOperationRequest, object details,
+        string error)
+    {
+        int? persistedRequestId = channelOperationRequest is { Id: > 0 } ? channelOperationRequest.Id : null;
+
+        return FailRequestAndAuditAsync(persistedRequestId, () => MarkChannelOperationRequestFailed(channelOperationRequest!),
+            AuditActionType.Create, AuditObjectType.ChannelOperationRequest, details, error);
+    }
+
+    private void MarkChannelOperationRequestFailed(ChannelOperationRequest channelOperationRequest)
+    {
+        channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
+        var (updated, error) = _channelOperationRequestRepository.Update(channelOperationRequest);
+        if (!updated)
+        {
+            _logger?.LogError("Error marking channel operation request {RequestId} as failed: {Error}",
+                channelOperationRequest.Id, error);
+        }
     }
 
     public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request,
@@ -1001,6 +1267,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Swap wallet not found"));
         }
 
+        RefuseSparkWallet(swapWallet);
+
         if (request.IsReverseSwapWalletRule)
         {
             if (!request.HasReverseSwapWalletId)
@@ -1010,6 +1278,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var wallet = await _walletRepository.GetById(request.ReverseSwapWalletId);
             if (wallet == null)
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+            RefuseSparkWallet(wallet);
         }
         else
         {
@@ -1182,14 +1451,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new Exception("Wallet not found");
         }
 
-        var coinSelectionStrategy = request.Strategy switch
-        {
-            COIN_SELECTION_STRATEGY.BiggestFirst => CoinSelectionStrategy.BiggestFirst,
-            COIN_SELECTION_STRATEGY.SmallestFirst => CoinSelectionStrategy.SmallestFirst,
-            COIN_SELECTION_STRATEGY.ClosestToTargetFirst => CoinSelectionStrategy.ClosestToTargetFirst,
-            COIN_SELECTION_STRATEGY.UpToAmount => CoinSelectionStrategy.UpToAmount,
-            _ => throw new ArgumentOutOfRangeException(nameof(request.Strategy), request.Strategy, "Unknown status")
-        };
+        RefuseSparkWallet(wallet);
+
+        var coinSelectionStrategy = MapCoinSelectionStrategy(request.Strategy,
+            strategy => new ArgumentOutOfRangeException(nameof(request.Strategy), strategy, "Unknown status"));
 
         var derivationStrategy = wallet.GetDerivationStrategy();
         if (derivationStrategy == null)
@@ -1264,23 +1529,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         };
     }
 
-    private WITHDRAWAL_REQUEST_STATUS GetStatus(WalletWithdrawalRequestStatus status)
-    {
-        return status switch
-        {
-            WalletWithdrawalRequestStatus.Cancelled => WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled,
-            WalletWithdrawalRequestStatus.Failed => WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed,
-            WalletWithdrawalRequestStatus.FinalizingPSBT => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
-            WalletWithdrawalRequestStatus.OnChainConfirmationPending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
-            WalletWithdrawalRequestStatus.OnChainConfirmed => WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled,
-            WalletWithdrawalRequestStatus.Pending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
-            WalletWithdrawalRequestStatus.PSBTSignaturesPending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
-            WalletWithdrawalRequestStatus.Rejected => WITHDRAWAL_REQUEST_STATUS.WithdrawalRejected,
-            WalletWithdrawalRequestStatus.Bumped => WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped,
-            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown status")
-        };
-    }
-
     private async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusResponse(List<WalletWithdrawalRequest> withdrawalRequests)
     {
         var withdrawalsResponses = new List<WithdrawalRequest>();
@@ -1296,7 +1544,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             withdrawalsResponses.Add(new WithdrawalRequest
             {
                 RequestId = withdrawalRequest.Id,
-                Status = GetStatus(withdrawalRequest.Status),
+                Status = WithdrawalEventMapper.ToProtoStatus(withdrawalRequest.Status),
                 RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
                 ReferenceId = withdrawalRequest.ReferenceId ?? "",
                 Confirmations = confirmations,
@@ -1588,5 +1836,413 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         return new SetChannelFeePolicyResponse();
+    }
+
+    public override async Task SubscribeWalletEvents(IAsyncStreamReader<WalletEventsClientMessage> requestStream,
+        IServerStreamWriter<WalletEvent> responseStream, ServerCallContext context)
+    {
+        var cancellationToken = context.CancellationToken;
+
+        if (!await requestStream.MoveNext(cancellationToken)
+            || requestStream.Current.MessageCase != WalletEventsClientMessage.MessageOneofCase.Subscribe)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "The first message must be a subscribe request"));
+        }
+
+        var subscribe = requestStream.Current.Subscribe;
+        var wallet = await _walletRepository.GetById(subscribe.WalletId);
+        if (wallet == null)
+            throw new RpcException(new Status(StatusCode.NotFound, $"Wallet {subscribe.WalletId} not found"));
+        RefuseSparkWallet(wallet);
+
+        var types = subscribe.EventTypes.ToHashSet();
+        var subscriber = GRPCAuthInterceptor.GetApiToken(context)?.Name ?? context.Peer;
+        var intercept = subscribe.InterceptWithdrawals;
+
+        using var subscription = _walletEventHub.Subscribe(wallet.Id, subscriber, intercept);
+        using var callEnded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var reading = ReadWalletEventsClientMessagesAsync(requestStream, subscription, callEnded.Token);
+
+        if (intercept)
+        {
+            await _auditService.LogAsync(AuditActionType.WithdrawalInterceptorConnected, AuditEventType.Success,
+                AuditObjectType.Wallet, wallet.Id.ToString(), new { Subscriber = subscriber, SubscriptionId = subscription.Id });
+        }
+
+        try
+        {
+            await responseStream.WriteAsync(new WalletEvent
+            {
+                Type = WALLET_EVENT_TYPE.WalletEventSubscribed,
+                WalletId = wallet.Id,
+                OccurredAtUnixMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds()
+            });
+
+            await foreach (var walletEvent in subscription.Reader.ReadAllAsync(cancellationToken))
+            {
+                var alwaysSent = walletEvent.Type == WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested;
+                if (types.Count > 0 && !alwaysSent && !types.Contains(walletEvent.Type))
+                    continue;
+
+                await responseStream.WriteAsync(walletEvent);
+            }
+        }
+        catch (WalletEventSubscriberTooSlowException e)
+        {
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, e.Message));
+        }
+        catch (WalletEventHubStoppingException e)
+        {
+            throw new RpcException(new Status(StatusCode.Unavailable, e.Message));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The client went away
+        }
+        finally
+        {
+            await callEnded.CancelAsync();
+            await reading;
+
+            if (intercept)
+            {
+                await _auditService.LogAsync(AuditActionType.WithdrawalInterceptorDisconnected, AuditEventType.Success,
+                    AuditObjectType.Wallet, wallet.Id.ToString(), new { Subscriber = subscriber, SubscriptionId = subscription.Id });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads what the client sends after subscribing: an interceptor's decisions. An interceptor that half-closes can
+    /// no longer answer, so its subscription ends (the gate then treats any pending decision as blocked).
+    /// </summary>
+    private async Task ReadWalletEventsClientMessagesAsync(IAsyncStreamReader<WalletEventsClientMessage> requestStream,
+        WalletEventSubscription subscription, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await requestStream.MoveNext(cancellationToken))
+            {
+                var message = requestStream.Current;
+                if (message.MessageCase != WalletEventsClientMessage.MessageOneofCase.Decision
+                    || !subscription.InterceptWithdrawals)
+                {
+                    _logger.LogWarning("Wallet events: ignored a {Message} message from {Subscriber} on wallet {WalletId}",
+                        message.MessageCase, subscription.Subscriber, subscription.WalletId);
+                    continue;
+                }
+
+                var decision = message.Decision;
+                var reason = decision.HasReason ? decision.Reason : null;
+                if (!_withdrawalInterceptorGate.Decide(subscription.Id, decision.DecisionId, decision.Allow, reason))
+                {
+                    _logger.LogWarning(
+                        "Wallet events: decision {DecisionId} from {Subscriber} on wallet {WalletId} matches no pending withdrawal (unknown, expired or already answered)",
+                        decision.DecisionId, subscription.Subscriber, subscription.WalletId);
+                }
+            }
+
+            if (subscription.InterceptWithdrawals)
+                subscription.Dispose();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The call ended
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Wallet events: reading from {Subscriber} on wallet {WalletId} failed",
+                subscription.Subscriber, subscription.WalletId);
+            if (subscription.InterceptWithdrawals)
+                subscription.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Spark wallets (SPARK_SIGNER=wallet) have no on-chain keys: the methods that take an on-chain wallet refuse them
+    /// </summary>
+    private static void RefuseSparkWallet(Wallet? wallet)
+    {
+        if (wallet is { Kind: WalletKind.Spark })
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Wallet {wallet.Id} is a Spark wallet, not an on-chain wallet"));
+    }
+
+    public override async Task<RequestSwapOutResponse> RequestSwapOut(RequestSwapOutRequest request, ServerCallContext context)
+    {
+        var provider = (SwapProvider)(int)request.Provider;
+        if (!Enum.IsDefined(provider))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Unknown swap provider {(int)request.Provider}"));
+
+        if (request.AmountSats <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "amount_sats must be > 0"));
+
+        if (request.HasMaxRoutingFeesPercent && request.MaxRoutingFeesPercent is <= 0 or > 100)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "max_routing_fees_percent must be > 0 and <= 100"));
+
+        string? referenceId = null;
+        if (request.HasReferenceId)
+        {
+            if (string.IsNullOrWhiteSpace(request.ReferenceId))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "reference_id must not be empty"));
+
+            referenceId = request.ReferenceId;
+            var existing = await _swapOutRepository.GetByReferenceId(referenceId);
+            if (existing != null)
+            {
+                if (existing.NodeId != request.NodeId || existing.Provider != provider || existing.SatsAmount != request.AmountSats ||
+                    existing.DestinationWalletId != request.WalletId)
+                {
+                    throw new RpcException(new Status(StatusCode.AlreadyExists,
+                        $"reference_id {referenceId} was already used for swap {existing.Id}, with other parameters"));
+                }
+
+                return ToRequestSwapOutResponse(existing);
+            }
+        }
+
+        var node = (await _nodeRepository.GetAllConfiguredByProvider(provider)).FirstOrDefault(n => n.Id == request.NodeId);
+        if (node == null)
+            throw new RpcException(new Status(StatusCode.FailedPrecondition,
+                $"Node {request.NodeId} is not a managed node configured for {provider.GetDisplayName()}"));
+
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+            throw new RpcException(new Status(StatusCode.NotFound, $"Wallet {request.WalletId} not found"));
+        RefuseSparkWallet(wallet);
+
+        var derivationStrategy = wallet.GetDerivationStrategy();
+        if (derivationStrategy == null)
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Wallet {wallet.Id} has no derivation strategy"));
+
+        // Loop and 40swap send to an address given now; a Spark swap reserves its own when it exits
+        string? address = null;
+        if (provider != SwapProvider.Spark)
+        {
+            var reserved = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true,
+                context.CancellationToken);
+            if (reserved == null)
+                throw new RpcException(new Status(StatusCode.Internal, $"Could not reserve a deposit address of wallet {wallet.Id}"));
+            address = reserved.Address.ToString();
+        }
+
+        var swapRequest = new SwapOutRequest
+        {
+            Amount = request.AmountSats,
+            Address = address,
+            MaxRoutingFeesPercent = request.HasMaxRoutingFeesPercent
+                ? (decimal)request.MaxRoutingFeesPercent
+                : SwapProviderLimits.MaxRoutingFeeRatioFor(node, provider) * 100,
+            MaxServiceFeesPercent = Constants.SWAP_MAX_SERVICE_FEES_PERCENT,
+            MaxMinerFees = Constants.SWAP_MAX_MINER_FEES_SATS,
+            SweepConfTarget = Constants.SWEEP_CONF_TARGET,
+            PrepayAmtSat = Constants.SWAP_PREPAY_AMOUNT_SATS,
+        };
+
+        var swapOut = new SwapOut
+        {
+            Provider = provider,
+            NodeId = node.Id,
+            DestinationWalletId = wallet.Id,
+            SatsAmount = request.AmountSats,
+            IsManual = true,
+            ReferenceId = referenceId,
+        };
+
+        SwapOutCreation creation;
+        try
+        {
+            creation = await _swapsService.CreateSwapOutAsync(node, swapOut, swapRequest, context.CancellationToken);
+        }
+        catch (Exception e) when (e is not RpcException and not OperationCanceledException)
+        {
+            _logger.LogError(e, "Swap-out of {Amount} sats from node {NodeId} with {Provider} failed", request.AmountSats, node.Id, provider);
+            var code = e switch
+            {
+                SparkUnavailableException => StatusCode.Unavailable,
+                ArgumentException => StatusCode.InvalidArgument,
+                InvalidOperationException => StatusCode.FailedPrecondition,
+                _ => StatusCode.Internal
+            };
+            throw new RpcException(new Status(code, e.Message));
+        }
+
+        var auditDetails = new
+        {
+            NodeId = node.Id,
+            NodeName = node.Name,
+            Provider = provider.ToString(),
+            AmountSats = request.AmountSats,
+            DestinationWalletId = wallet.Id,
+            DestinationAddress = swapRequest.Address,
+            ProviderId = creation.Response.Id,
+            ReferenceId = referenceId,
+            IsManual = true,
+            Source = "gRPC",
+            Error = creation.SaveError
+        };
+
+        if (!creation.Saved)
+        {
+            await _auditService.LogAsync(AuditActionType.SwapOutInitiated, AuditEventType.Failure, AuditObjectType.SwapOut,
+                creation.Response.Id, auditDetails);
+            throw new RpcException(new Status(StatusCode.Internal,
+                $"Swap {creation.Response.Id} was created with {provider.GetDisplayName()} but could not be saved: {creation.SaveError}"));
+        }
+
+        await _auditService.LogAsync(AuditActionType.SwapOutInitiated, AuditEventType.Success, AuditObjectType.SwapOut,
+            creation.Response.Id, auditDetails);
+
+        return ToRequestSwapOutResponse(swapOut);
+    }
+
+    public override async Task<GetSwapOutResponse> GetSwapOut(GetSwapOutRequest request, ServerCallContext context)
+    {
+        var swap = request.SwapCase switch
+        {
+            GetSwapOutRequest.SwapOneofCase.SwapId => await _swapOutRepository.GetById(request.SwapId),
+            GetSwapOutRequest.SwapOneofCase.ReferenceId when !string.IsNullOrWhiteSpace(request.ReferenceId) =>
+                await _swapOutRepository.GetByReferenceId(request.ReferenceId),
+            _ => throw new RpcException(new Status(StatusCode.InvalidArgument, "swap_id or reference_id is required"))
+        };
+
+        if (swap == null)
+            throw new RpcException(new Status(StatusCode.NotFound, "Swap not found"));
+
+        var response = new GetSwapOutResponse
+        {
+            SwapId = swap.Id,
+            Provider = (SWAP_PROVIDER)(int)swap.Provider,
+            ProviderId = swap.ProviderId ?? string.Empty,
+            Status = (SWAP_OUT_STATUS)(int)swap.Status,
+            AmountSats = swap.SatsAmount,
+            ServiceFeeSats = swap.ServiceFeeSats ?? 0,
+            LightningFeeSats = swap.LightningFeeSats ?? 0,
+            OnchainFeeSats = swap.OnChainFeeSats ?? 0,
+        };
+        if (swap.TxId != null) response.TxId = swap.TxId;
+        if (swap.ErrorDetails != null) response.Error = swap.ErrorDetails;
+        if (swap.DestinationWalletId != null) response.DestinationWalletId = swap.DestinationWalletId.Value;
+        if (swap.DestinationAddress != null) response.DestinationAddress = swap.DestinationAddress;
+        if (swap.PaymentHash != null) response.PaymentHash = swap.PaymentHash;
+        if (swap.ReferenceId != null) response.ReferenceId = swap.ReferenceId;
+        if (swap.PayoutSats != null) response.PayoutSats = swap.PayoutSats.Value;
+        return response;
+    }
+
+    private static RequestSwapOutResponse ToRequestSwapOutResponse(SwapOut swap)
+    {
+        var response = new RequestSwapOutResponse
+        {
+            SwapId = swap.Id,
+            ProviderId = swap.ProviderId ?? string.Empty,
+            Status = (SWAP_OUT_STATUS)(int)swap.Status,
+            DestinationAddress = swap.DestinationAddress ?? string.Empty,
+        };
+        if (swap.ErrorDetails != null) response.Error = swap.ErrorDetails;
+        return response;
+    }
+
+    // ── Spark wallets (SPARK_SIGNER=wallet; temporary) ─────────────────────────────────
+
+    public override Task<CreateSparkWalletResponse> CreateSparkWallet(CreateSparkWalletRequest request, ServerCallContext context) =>
+        SparkWalletCallAsync("Creating a Spark wallet", async () =>
+        {
+            // The mnemonic is shown once, on the Wallets page; never over the API
+            var (wallet, _) = await _sparkWallet.CreateWalletAsync(request.Name, request.HasAccount ? request.Account : 0,
+                request.HasMaxBalanceSats ? request.MaxBalanceSats : null, context.CancellationToken);
+            return new CreateSparkWalletResponse { WalletId = wallet.Id, IdentityPublicKey = wallet.SparkIdentityPublicKey ?? string.Empty };
+        });
+
+    public override Task<GetSparkWalletsResponse> GetSparkWallets(GetSparkWalletsRequest request, ServerCallContext context) =>
+        SparkWalletCallAsync("Listing the Spark wallets", async () =>
+        {
+            var response = new GetSparkWalletsResponse();
+            foreach (var wallet in await _sparkWallet.ListWalletsAsync(request.IncludeArchived, context.CancellationToken))
+            {
+                var info = new SparkWalletInfo
+                {
+                    Id = wallet.Id,
+                    Name = wallet.Name,
+                    IdentityPublicKey = wallet.IdentityPublicKey ?? string.Empty,
+                    Account = wallet.Account,
+                    EffectiveMaxBalanceSats = wallet.EffectiveMaxBalanceSats,
+                    Archived = wallet.IsArchived
+                };
+                if (wallet.MaxBalanceSats is { } maxBalance) info.MaxBalanceSats = maxBalance;
+                info.NodeIds.AddRange(wallet.NodeIds);
+                response.Wallets.Add(info);
+            }
+
+            return response;
+        });
+
+    public override Task<GetSparkWalletBalanceResponse> GetSparkWalletBalance(GetSparkWalletBalanceRequest request,
+        ServerCallContext context) =>
+        SparkWalletCallAsync("Getting a Spark wallet's balance", async () =>
+        {
+            var balance = await _sparkWallet.GetSatsBalanceAsync(new SparkWalletRef(request.WalletId), context.CancellationToken);
+            return new GetSparkWalletBalanceResponse
+            {
+                OwnedSats = balance.Owned,
+                AvailableSats = balance.Available,
+                IncomingSats = balance.Incoming,
+                FrozenSats = balance.Frozen
+            };
+        });
+
+    public override Task<WithdrawAllSparkWalletResponse> WithdrawAllSparkWallet(WithdrawAllSparkWalletRequest request,
+        ServerCallContext context) =>
+        SparkWalletCallAsync("Withdrawing a Spark wallet", async () =>
+        {
+            var withdrawal = await _sparkSwaps.WithdrawAllAsync(new SparkWalletRef(request.WalletId), request.DestinationWalletId, context.CancellationToken);
+            var response = new WithdrawAllSparkWalletResponse
+            {
+                TxId = withdrawal.Leftover?.TxId ?? string.Empty,
+                PayoutSats = withdrawal.Leftover?.PayoutSats ?? 0,
+                FeeSats = withdrawal.Leftover?.FeeSats ?? 0,
+                HeldBackSats = withdrawal.HeldBackSats,
+                Note = withdrawal.Note ?? string.Empty
+            };
+            response.SwapExits.AddRange(withdrawal.SwapExits.Select(exit => new Nodeguard.SparkSwapExit
+            {
+                SwapIds = { exit.SwapIds },
+                Step = exit.Step switch
+                {
+                    SparkExitStep.ExitSent => SPARK_EXIT_STEP.SparkExitSent,
+                    SparkExitStep.Completed => SPARK_EXIT_STEP.SparkExitCompleted,
+                    _ => SPARK_EXIT_STEP.SparkExitWaiting
+                },
+                TxId = exit.TxId ?? string.Empty,
+                Error = exit.Error ?? string.Empty
+            }));
+            return response;
+        });
+
+    public override Task<ArchiveSparkWalletResponse> ArchiveSparkWallet(ArchiveSparkWalletRequest request, ServerCallContext context) =>
+        SparkWalletCallAsync("Archiving a Spark wallet", async () =>
+        {
+            await _sparkWallet.ArchiveWalletAsync(request.WalletId, context.CancellationToken);
+            return new ArchiveSparkWalletResponse();
+        });
+
+    /// <summary>Runs a Spark wallet action, its refusals mapped to statuses</summary>
+    private async Task<T> SparkWalletCallAsync<T>(string action, Func<Task<T>> call)
+    {
+        try
+        {
+            return await call();
+        }
+        catch (Exception e) when (e is not RpcException and not OperationCanceledException)
+        {
+            var code = e switch
+            {
+                SparkUnavailableException => StatusCode.Unavailable,
+                ArgumentException => StatusCode.InvalidArgument,
+                InvalidOperationException => StatusCode.FailedPrecondition,
+                _ => StatusCode.Internal
+            };
+            _logger.LogError(e, "{Action} through gRPC failed", action);
+            throw new RpcException(new Status(code, code == StatusCode.Internal ? $"{action} failed" : e.Message));
+        }
     }
 }

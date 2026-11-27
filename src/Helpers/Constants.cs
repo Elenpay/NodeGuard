@@ -199,10 +199,11 @@ public class Constants
     public static double REBALANCE_AMOUNT_BACKOFF_RATIO = 0.8;
 
     /// <summary>
-    /// Maximum number of partial payments (MPP shards) LND may split a rebalance into. 1
-    /// disables splitting; higher values let LND complete an amount across several routes.
+    /// Maximum number of partial payments (MPP shards) LND may split a payment sent with SendPaymentV2 into:
+    /// rebalances and Spark swap payments (SEND_PAYMENT_MAX_PARTS; REBALANCE_MAX_PARTS still read as a
+    /// fallback). 1 disables splitting; higher values let LND complete an amount across several routes.
     /// </summary>
-    public static uint REBALANCE_MAX_PARTS = 32;
+    public static uint SEND_PAYMENT_MAX_PARTS = 32;
 
     /// <summary>
     /// How far back the MonitorRebalancesJob sweeps for already-terminal-but-possibly-wrong
@@ -319,7 +320,7 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 3000;
 
     // Most-negative inbound ppm allowed — a discount to attract inbound routing.
-    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -2000;
+    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -1000;
 
     // Most-positive inbound ppm allowed — a surcharge to repel inbound routing.
     public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 1000;
@@ -373,6 +374,10 @@ public class Constants
 
     /// Default timeout (seconds) for a rebalance payment to search for a route before giving up.
     public static int DEFAULT_REBALANCE_TIMEOUT_SECONDS = 180;
+
+    /// How long (seconds) a withdrawal waits for the integrators intercepting its wallet (SubscribeWalletEvents with
+    /// intercept_withdrawals) to allow it before it is blocked
+    public static int WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS = 60;
 
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
@@ -608,8 +613,9 @@ public class Constants
         var rebProbeBackoff = Environment.GetEnvironmentVariable("REBALANCE_AMOUNT_BACKOFF_RATIO");
         if (rebProbeBackoff != null) REBALANCE_AMOUNT_BACKOFF_RATIO = double.Parse(rebProbeBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
-        var rebMaxParts = Environment.GetEnvironmentVariable("REBALANCE_MAX_PARTS");
-        if (rebMaxParts != null) REBALANCE_MAX_PARTS = uint.Parse(rebMaxParts);
+        var sendPaymentMaxParts = Environment.GetEnvironmentVariable("SEND_PAYMENT_MAX_PARTS")
+                                  ?? Environment.GetEnvironmentVariable("REBALANCE_MAX_PARTS");
+        if (sendPaymentMaxParts != null) SEND_PAYMENT_MAX_PARTS = uint.Parse(sendPaymentMaxParts);
 
         var rebReconcileWindow = Environment.GetEnvironmentVariable("REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS");
         if (rebReconcileWindow != null) REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS = int.Parse(rebReconcileWindow);
@@ -724,6 +730,9 @@ public class Constants
         if (reRebalanceDefaultRefreshHours != null) ROUTING_ENGINE_REBALANCE_DEFAULT_BUDGET_REFRESH_HOURS = int.Parse(reRebalanceDefaultRefreshHours);
         var rebalanceTimeoutSeconds = Environment.GetEnvironmentVariable("DEFAULT_REBALANCE_TIMEOUT_SECONDS");
         if (rebalanceTimeoutSeconds != null) DEFAULT_REBALANCE_TIMEOUT_SECONDS = int.Parse(rebalanceTimeoutSeconds);
+
+        var withdrawalInterceptorTimeoutSeconds = Environment.GetEnvironmentVariable("WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS");
+        if (withdrawalInterceptorTimeoutSeconds != null) WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS = int.Parse(withdrawalInterceptorTimeoutSeconds);
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;

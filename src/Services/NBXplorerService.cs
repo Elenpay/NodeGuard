@@ -178,7 +178,7 @@ public class NBXplorerService : INBXplorerService
             // Kestrel's 8KB MaxRequestLineSize and NBXplorer answered 414 — which the callers
             // swallow into a degraded selection. The body limit is 30MB, roughly 3,662x the
             // room, so the list no longer has a practical ceiling.
-            // NOTE: this requires an NBXplorer serving POST /selectutxos (Elenpay/NBXplorer#18).
+            // NOTE: this requires an NBXplorer serving POST /selectutxos (Lunar-Rails/ep-nbxplorer#18).
             // Against an older build every call answers 405 and coin selection degrades.
             var response = await _httpClient.PostAsync(url,
                 JsonContent.Create(new { ignoreOutpoints }), cancellation);
@@ -266,21 +266,19 @@ public class NBXplorerService : INBXplorerService
     {
         var recommendedFees = await GetMempoolRecommendedFeesAsync(cancellation);
 
-        switch (mempoolRecommendedFeesType)
+        decimal? fee = mempoolRecommendedFeesType switch
         {
-            case MempoolRecommendedFeesType.EconomyFee:
-                return recommendedFees.EconomyFee;
-            case MempoolRecommendedFeesType.FastestFee:
-                return recommendedFees.FastestFee;
-            case MempoolRecommendedFeesType.HourFee:
-                return recommendedFees.HourFee;
-            case MempoolRecommendedFeesType.HalfHourFee:
-                return recommendedFees.HalfHourFee;
-            case MempoolRecommendedFeesType.CustomFee:
-                return null;
-        }
+            MempoolRecommendedFeesType.EconomyFee => recommendedFees.EconomyFee,
+            MempoolRecommendedFeesType.FastestFee => recommendedFees.FastestFee,
+            MempoolRecommendedFeesType.HourFee => recommendedFees.HourFee,
+            MempoolRecommendedFeesType.HalfHourFee => recommendedFees.HalfHourFee,
+            MempoolRecommendedFeesType.CustomFee => null,
+            _ => throw new Exception("Invalid mempoolRecommendedFeesTypes")
+        };
 
-        throw new Exception("Invalid mempoolRecommendedFeesTypes");
+        // A failed mempool fetch yields all-zero fees; null sends callers to their fallback instead
+        // of funding a 0 sat/vB transaction.
+        return fee > 0 ? fee : null;
     }
 
     public async Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,

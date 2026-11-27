@@ -2,6 +2,7 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -14,9 +15,13 @@ public class MonitorSwapsJob : IJob
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly ISwapsService _swapsService;
     private readonly IAuditService _auditService;
+    private readonly SparkSettings _sparkSettings;
+    private readonly ISparkGuardrails _sparkGuardrails;
 
-    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService)
+    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService, SparkSettings sparkSettings, ISparkGuardrails sparkGuardrails)
     {
+        _sparkSettings = sparkSettings;
+        _sparkGuardrails = sparkGuardrails;
         _logger = logger;
         _schedulerFactory = schedulerFactory;
         _nodeRepository = nodeRepository;
@@ -44,6 +49,26 @@ public class MonitorSwapsJob : IJob
             });
     }
 
+    /// <summary>
+    /// Spark balances only pass through: refreshes the transit balance and audits stuck sats and overdue
+    /// exits. Never fails the job.
+    /// </summary>
+    private async Task CheckSparkGuardrailsAsync(IReadOnlyCollection<SwapOut> pendingSwaps)
+    {
+        try
+        {
+            foreach (var alert in await _sparkGuardrails.CheckAsync(pendingSwaps))
+            {
+                await _auditService.LogSystemAsync(alert.Action, AuditEventType.Failure, alert.ObjectType, alert.ObjectId,
+                    new { alert.Message, alert.Details });
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error checking the Spark transit wallet");
+        }
+    }
+
     public async Task Execute(IJobExecutionContext context)
     {
         _logger.LogInformation("Starting {JobName}... ", nameof(MonitorSwapsJob));
@@ -51,9 +76,14 @@ public class MonitorSwapsJob : IJob
         {
             var loopNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, null);
             var fortySwapNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, null);
-            var managedNodes = loopNodes.Concat(fortySwapNodes).Distinct().ToList();
+            var sparkNodes = _sparkSettings.Enabled
+                ? await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, null)
+                : new List<Node>();
+            var managedNodes = loopNodes.Concat(fortySwapNodes).Concat(sparkNodes).Where(n => n != null).DistinctBy(n => n.Id).ToList();
 
-            var swaps = await _swapOutRepository.GetAllPending();
+            // A paid Spark swap is SparkSwapExitJob's: it exits it on-chain
+            var pending = await _swapOutRepository.GetAllPending();
+            var swaps = pending.Where(s => s.Provider != SwapProvider.Spark || s.LightningFeeSats is null);
             foreach (var swap in swaps)
             {
                 try
@@ -74,7 +104,10 @@ public class MonitorSwapsJob : IJob
                     SwapResponse? response;
                     try
                     {
-                        response = await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
+                        // A Spark swap is followed here until its Lightning payment settles
+                        response = swap.Provider == SwapProvider.Spark
+                            ? await _swapsService.AdvanceSwapAsync(node, swap)
+                            : await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
                     }
                     catch (Exception ex)
                     {
@@ -107,6 +140,7 @@ public class MonitorSwapsJob : IJob
                         }
 
                         swap.Status = response.Status;
+                        swap.TxId = response.TxId ?? swap.TxId;
                         swap.ServiceFeeSats = response.ServerFee;
                         swap.LightningFeeSats = response.OffchainFee;
                         swap.OnChainFeeSats = response.OnchainFee;
@@ -167,6 +201,22 @@ public class MonitorSwapsJob : IJob
                                 });
                         }
                     }
+                    else if (swap.Provider != SwapProvider.Spark &&
+                             (swap.ServiceFeeSats != response.ServerFee || swap.LightningFeeSats != response.OffchainFee ||
+                              swap.OnChainFeeSats != response.OnchainFee))
+                    {
+                        // Providers report fees as they accrue: keep a pending swap's up to date too. A Spark swap saves
+                        // its own, and a routing fee recorded here would mark it paid
+                        swap.ServiceFeeSats = response.ServerFee;
+                        swap.LightningFeeSats = response.OffchainFee;
+                        swap.OnChainFeeSats = response.OnchainFee;
+
+                        var (updated, error) = _swapOutRepository.Update(swap);
+                        if (!updated)
+                        {
+                            _logger.LogError("Error updating the fees of swap {SwapId}: {Error}", swap.Id, error);
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -175,6 +225,11 @@ public class MonitorSwapsJob : IJob
                         swap.Id,
                         swap.Provider);
                 }
+            }
+
+            if (_sparkSettings.Enabled)
+            {
+                await CheckSparkGuardrailsAsync(pending);
             }
         }
         catch (Exception e)

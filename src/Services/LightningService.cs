@@ -153,6 +153,13 @@ namespace NodeGuard.Services
         public Task<uint?> GetBlockHeight(Node node);
 
         /// <summary>
+        /// Checks that the LND behind the node's endpoint and macaroon is the node itself: its identity pubkey is the
+        /// node's. Returns null when it is, and otherwise why it could not be confirmed (a different pubkey, or the
+        /// LND could not be asked).
+        /// </summary>
+        public Task<string?> GetNodeIdentityError(Node node);
+
+        /// <summary>
         /// Lists all channels for a given node
         /// </summary>
         /// <param name="node"></param>
@@ -272,6 +279,11 @@ namespace NodeGuard.Services
         private readonly ILightningRouterService _lightningRouterService;
         private readonly IAuditService _auditService;
 
+        /// <summary>
+        /// How long the identity check waits for the LND to answer before treating the node as unconfirmed
+        /// </summary>
+        public TimeSpan IdentityCheckTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
             INodeRepository nodeRepository,
@@ -368,6 +380,17 @@ namespace NodeGuard.Services
                 channelOperationRequest.Id,
                 source.Name,
                 destination.Name);
+
+            // A node's endpoint and macaroon can be edited, so the LND they lead to is asked who it is before the
+            // wallet funds a channel on it: otherwise the funds would open a channel on whatever node answers
+            var identityError = await GetNodeIdentityError(source);
+            if (identityError != null)
+            {
+                _logger.LogError(
+                    "Channel open request {RequestId} refused, the source node could not be confirmed: {Reason}",
+                    channelOperationRequest.Id, identityError);
+                throw new InvalidOperationException(identityError);
+            }
 
             var combinedPSBT = GetCombinedPsbt(channelOperationRequest, _logger);
 
@@ -1654,6 +1677,34 @@ namespace NodeGuard.Services
             return info?.BlockHeight;
         }
 
+        public async Task<string?> GetNodeIdentityError(Node node)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+
+            GetInfoResponse? info;
+            try
+            {
+                // GetInfo has no gRPC deadline: an LND that never answers would otherwise hang the caller
+                info = await _lightningClientService.GetInfo(node).WaitAsync(IdentityCheckTimeout);
+            }
+            catch (TimeoutException)
+            {
+                info = null;
+            }
+
+            if (info == null)
+            {
+                return $"The LND at {node.Endpoint} could not be asked for its identity, so it cannot be confirmed to be node {node.Name}";
+            }
+
+            if (!string.Equals(info.IdentityPubkey, node.PubKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"The LND at {node.Endpoint} is {info.IdentityPubkey}, not node {node.Name} ({node.PubKey})";
+            }
+
+            return null;
+        }
+
         public async Task<ListChannelsResponse?> ListChannels(Node node)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
@@ -1749,7 +1800,7 @@ namespace NodeGuard.Services
                 FeeLimitMsat = feeLimitMsat,
                 TimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS,
                 AllowSelfPayment = true,            // mandatory for circular self-pay
-                MaxParts = Constants.REBALANCE_MAX_PARTS, // let LND split (MPP) across routes
+                MaxParts = Constants.SEND_PAYMENT_MAX_PARTS, // let LND split (MPP) across routes
                 NoInflightUpdates = true,           // we only care about the terminal Payment update
             };
 

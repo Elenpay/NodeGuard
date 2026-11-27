@@ -47,6 +47,16 @@ namespace NodeGuard.Data.Repositories
          return swap;
       }
 
+      public async Task<SwapOut?> GetByReferenceId(string referenceId)
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+         return await context.SwapOuts
+            .Include(s => s.DestinationWallet)
+            .Include(s => s.UserRequestor)
+            .SingleOrDefaultAsync(s => s.ReferenceId == referenceId);
+      }
+
       public async Task<List<SwapOut>> GetByIds(List<int> ids)
       {
          await using var context = await _dbContextFactory.CreateDbContextAsync();
@@ -162,6 +172,27 @@ namespace NodeGuard.Data.Repositories
          return _repository.Update(swap, context);
       }
 
+      public (bool, string?) UpdateRange(IReadOnlyCollection<SwapOut> swaps)
+      {
+         using var context = _dbContextFactory.CreateDbContext();
+
+         foreach (var swap in swaps)
+         {
+            swap.SetUpdateDatetime();
+         }
+
+         try
+         {
+            // One SaveChanges: one transaction
+            context.UpdateRange(swaps);
+            return (context.SaveChanges() > 0, null);
+         }
+         catch (Exception e)
+         {
+            return (false, e.Message);
+         }
+      }
+
       public async Task<List<SwapOut>> GetInFlightSwapsByNode(int nodeId)
       {
          await using var context = await _dbContextFactory.CreateDbContextAsync();
@@ -172,7 +203,8 @@ namespace NodeGuard.Data.Repositories
          var swaps = await context.SwapOuts
             .Where(s => s.NodeId == nodeId && 
                        s.Status == SwapOutStatus.Pending &&
-                       s.CreationDatetime >= twentyFourHoursAgo)
+                       s.CreationDatetime >= twentyFourHoursAgo &&
+                       !(s.Provider == SwapProvider.Spark && s.LightningFeeSats != null))
             .ToListAsync();
 
          return swaps;
@@ -191,6 +223,29 @@ namespace NodeGuard.Data.Repositories
             .SumAsync(s => (long?)((s.ServiceFeeSats ?? 0) + (s.LightningFeeSats ?? 0) + (s.OnChainFeeSats ?? 0))) ?? 0;
 
          return new Money(consumedBudgetSats, MoneyUnit.Satoshi);
+      }
+
+      public async Task<HashSet<string>> GetSparkTransferIdsAsync()
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+         var transferIds = await context.SwapOuts
+            .Where(s => s.SparkTransferId != null)
+            .Select(s => s.SparkTransferId!)
+            .ToListAsync();
+
+         return transferIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+      }
+
+      public async Task<List<SwapOut>> GetSparkSwapsByIdentityAsync(string identityPublicKey)
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+         var identity = identityPublicKey.ToLowerInvariant();
+
+         return await context.SwapOuts
+            .AsNoTracking()
+            .Where(s => s.Provider == SwapProvider.Spark && s.SparkIdentity != null && s.SparkIdentity.ToLower() == identity)
+            .ToListAsync();
       }
    }
 }

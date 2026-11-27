@@ -29,6 +29,7 @@ using Nodeguard;
 using NodeGuard.Data;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories;
+using NodeGuard.Services;
 using Npgsql;
 using Xunit.Abstractions;
 
@@ -213,7 +214,8 @@ public class PsbtApprovalBindingE2ETests
     private static RPCClient CreateBitcoindRpc()
     {
         var credential = new NetworkCredential(Env("BITCOIND_RPC_USER", "polaruser"), Env("BITCOIND_RPC_PASS", "polarpass"));
-        return new RPCClient(credential, new Uri(Env("BITCOIND_RPC_URL", "http://localhost:18443")), Network.RegTest);
+        var rpc = new RPCClient(credential, new Uri(Env("BITCOIND_RPC_URL", "http://localhost:18443")), Network.RegTest);
+        return rpc.SetWalletContext(Env("BITCOIND_RPC_WALLET", "default"));
     }
 
     // ---- database access -----------------------------------------------------------------------------
@@ -247,7 +249,8 @@ public class PsbtApprovalBindingE2ETests
         => new(
             new Repository<WalletWithdrawalRequestPSBT>(NullLogger<WalletWithdrawalRequestPSBT>.Instance),
             NullLogger<WalletWithdrawalRequestPsbtRepository>.Instance,
-            DbContextFactory());
+            DbContextFactory(),
+            Mock.Of<IWithdrawalEventPublisher>());
 
     private static async Task<string> GetTemplatePsbtAsync(int requestId)
     {

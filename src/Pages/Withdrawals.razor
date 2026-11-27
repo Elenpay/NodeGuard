@@ -33,7 +33,7 @@
               UseInternalEditing="true"
               RowInserted="OnRowInserted"
               RowRemoving="OnRowRemoving"
-              RowUpdated="OnRowUpdated"
+              RowUpdating="OnRowUpdating"
               NewItemDefaultSetter="NewItemDefaultSetter"
               ShowPager="true"
               ShowPageSizes="true"
@@ -57,6 +57,9 @@
                 <DeleteCommandTemplate>
                     @*<Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
                 </DeleteCommandTemplate>
+                <SaveCommandTemplate>
+                    <Button Type="ButtonType.Submit" PreventDefaultOnSubmit Color="Color.Link" Disabled="@_createInFlight" Clicked="@(() => SaveNewWithdrawal(context.Clicked))">Save</Button>
+                </SaveCommandTemplate>
 
             </DataGridCommandColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
@@ -549,7 +552,7 @@
     // Guards ShowApprovalModal against re-entry (double click, repeated render dispatch) while the template
     // PSBT is being generated. Cross-user/cross-circuit races are handled by the database unique index.
     private bool _approvalInFlight;
-    // Same guard for the New-withdrawal confirmation, which creates the request (and schedules it on hot wallets).
+    // Same guard for creating a withdrawal: the popup's Save and the hot wallet confirmation (which also schedules it).
     private bool _createInFlight;
     private int? _selectedWalletId;
     private static readonly decimal _minimumWithdrawalAmount = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
@@ -827,47 +830,27 @@
         }
     }
 
-    private async Task OnRowUpdated(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)
+    // The popup stays open while OnRowInserted runs, so a second Save there would insert the request twice.
+    private async Task SaveNewWithdrawal(EventCallback save)
     {
-        if (arg.Item == null) return;
-        // Validate balance
+        if (_createInFlight) return;
+        _createInFlight = true;
 
-        if (await ValidateBalance(arg)) return;
-
-        var (updated, errorMessage) = WalletWithdrawalRequestRepository.Update(arg.Item);
-        if (updated)
+        try
         {
-            await LogWithdrawalAuditAsync(AuditActionType.Update, AuditEventType.Success, arg.Item, "Withdrawal request updated.");
-            ToastService.ShowSuccess("Success");
+            await save.InvokeAsync();
         }
-        else
+        finally
         {
-            var message = errorMessage ?? "Something went wrong";
-            await LogWithdrawalAuditAsync(AuditActionType.Update, AuditEventType.Failure, arg.Item, message);
-            ToastService.ShowError(message);
+            _createInFlight = false;
         }
-
-        await GetData();
     }
 
-    private async Task<bool> ValidateBalance(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)
+    // Requests aren't editable here: a Save clicked again after an insert reaches Blazorise as an update carrying the
+    // stale form values (a 0 BTC destination), which internal editing would write onto the request.
+    private void OnRowUpdating(CancellableRowChange<WalletWithdrawalRequest, Dictionary<string, object>> arg)
     {
-        var wallet = await WalletRepository.GetById(arg.Item.WalletId);
-
-        if (wallet != null)
-        {
-            var balance = await BitcoinService.GetWalletConfirmedBalance(wallet);
-
-            if (arg.Item.TotalAmount > balance.Item1)
-            {
-                ToastService.ShowError(
-                    $"The confirmed balance({balance.Item1:f8} BTC) for the selected wallet is less than the amount requested to withdraw ({arg.Item.TotalAmount:f8} BTC)");
-                await GetData();
-                return true;
-            }
-        }
-
-        return false;
+        arg.Cancel = true;
     }
 
     private void DestinationAddressValidator(ValidatorEventArgs obj)
@@ -960,13 +943,16 @@
         }
     }
 
+    /// <summary>The audit action of the bump modal's current operation: an RBF cancellation or a fee bump.</summary>
+    private AuditActionType BumpAuditAction => _bumpIsCancellation ? AuditActionType.RbfCancel : AuditActionType.BumpFee;
+
     private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest, bool cancellation = false)
     {   
         _bumpIsCancellation = cancellation;
         if (walletWithdrawalRequest == null)
         {
             ToastService.ShowError("Invalid request");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, null, "Invalid bump fee request.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, null, "Invalid RBF replacement request.");
             return;
         }
             
@@ -974,7 +960,7 @@
         if (request == null)
         {
             ToastService.ShowError("Request not found");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, walletWithdrawalRequest, "Withdrawal request not found for bumping.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, walletWithdrawalRequest, "Withdrawal request to replace not found.");
             return;
         }
         
@@ -982,7 +968,7 @@
         if (request.Status != WalletWithdrawalRequestStatus.OnChainConfirmationPending)
         {
             ToastService.ShowError("Bumpfee can only be used for transactions that are pending on-chain confirmation.");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for withdrawal not pending on-chain confirmation.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, "RBF replacement requested for withdrawal not pending on-chain confirmation.");
             return;
         }
         
@@ -997,7 +983,7 @@
             catch (Exception)
             {
                 ToastService.ShowError("Error getting confirmations");
-                await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Failed to retrieve transaction confirmations for bumping.");
+                await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, "Failed to retrieve transaction confirmations for the RBF replacement.");
                 return;
             }
         }
@@ -1006,7 +992,7 @@
         {
             ToastService.ShowError("Bumpfee can only be used for transactions with no confirmations. " +
                                    "This transaction has already been mined.");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for transaction that already has confirmations.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, "RBF replacement requested for transaction that already has confirmations.");
             return;
         }
         
@@ -1014,7 +1000,7 @@
         if (!cancellation && request.Changeless && request.WalletWithdrawalRequestDestinations!.Count > 1)
         {
             ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for changeless transaction with multiple outputs.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, "Bump requested for changeless transaction with multiple outputs.");
             return;
         }
         
@@ -1027,8 +1013,8 @@
         catch (Exception ex)
         {
             ToastService.ShowError("Error while creating bumpfee modal");
-            var message = string.IsNullOrWhiteSpace(ex.Message) ? "Error while creating bump fee modal." : ex.Message;
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, message);
+            var message = string.IsNullOrWhiteSpace(ex.Message) ? "Error while creating the RBF replacement modal." : ex.Message;
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, message);
         }
     }
 
@@ -1123,14 +1109,14 @@
             if (newRequest == null || _bumpfeeRef == null)
             {
                 ToastService.ShowError("Something went wrong");
-                await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, newRequest, "Invalid bump fee request parameters.");
+                await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, newRequest, "Invalid RBF replacement request parameters.");
                 return;
             }
 
             // The replacement was validated, created and its UTXOs locked by WithdrawalRequestService (see BumpfeeModal).
             _selectedRequest = newRequest;
             await _bumpfeeRef.HideModal();
-            await LogWithdrawalAuditAsync(newRequest.IsRbfCancellation ? AuditActionType.Cancel : AuditActionType.BumpFee,
+            await LogWithdrawalAuditAsync(newRequest.IsRbfCancellation ? AuditActionType.RbfCancel : AuditActionType.BumpFee,
                 AuditEventType.Success, newRequest,
                 newRequest.IsRbfCancellation ? "RBF cancellation request created." : "Bump withdrawal request created.");
             await GetData();
@@ -1151,7 +1137,7 @@
         {
             Logger.LogError(e, "Error while bumping withdrawal request {RequestId}", newRequest?.Id);
             ToastService.ShowError("Something went wrong");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, newRequest, "Unexpected error while bumping withdrawal.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, newRequest, "Unexpected error while replacing withdrawal.");
             if (_bumpfeeRef != null) await _bumpfeeRef.HideModal();
         }
     }
@@ -1379,10 +1365,8 @@
             var job = SimpleJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            if (_selectedRequest != null)
-            {
-                WalletWithdrawalRequestRepository.Update(_selectedRequest);
-            }
+            // No write after scheduling: the job may already have moved the request to FinalizingPSBT or broadcast
+            // it, and persisting this copy (loaded before scheduling) would revert its status and wipe its TxId.
             await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Success, _selectedRequest, "Withdrawal job scheduled.");
         }
         catch (Exception ex)

@@ -327,4 +327,45 @@ public class WalletRepositoryTests
 
 
 
+    [Fact]
+    public async Task AvailableWallets_NeverIncludeSparkWallets()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+        var context = dbContextFactory.Object.CreateDbContext();
+        context.Wallets.Add(new Wallet { Id = 1, Name = "multisig", IsFinalised = true, Keys = [] });
+        context.Wallets.Add(new Wallet { Id = 2, Name = "hot", IsFinalised = true, IsHotWallet = true, MofN = 1, Keys = [] });
+        context.Wallets.Add(new Wallet { Id = 3, Name = "transit", Kind = WalletKind.Spark, IsFinalised = true, IsHotWallet = true, MofN = 1, Keys = [] });
+        context.Wallets.Add(new Wallet { Id = 4, Name = "old transit", Kind = WalletKind.Spark, IsFinalised = true, IsArchived = true, Keys = [] });
+        context.SaveChanges();
+
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
+
+        (await walletRepository.GetAvailableWallets()).Select(w => w.Id).Should().BeEquivalentTo([1, 2]);
+        (await walletRepository.GetAvailableWallets(includeWatchOnlyWallets: true)).Select(w => w.Id).Should().BeEquivalentTo([1, 2]);
+        (await walletRepository.GetAvailableByType(Nodeguard.WALLET_TYPE.Hot)).Select(w => w.Id).Should().BeEquivalentTo([2]);
+        (await walletRepository.GetAvailableByType(Nodeguard.WALLET_TYPE.Both)).Select(w => w.Id).Should().BeEquivalentTo([1, 2]);
+        (await walletRepository.GetAvailableByIds([1, 2, 3])).Select(w => w.Id).Should().BeEquivalentTo([1, 2]);
+        (await walletRepository.GetSparkWallets()).Select(w => w.Id).Should().Equal(3);
+        (await walletRepository.GetSparkWallets(includeArchived: true)).Select(w => w.Id).Should().Equal(3, 4);
+    }
+
+    [Fact]
+    public async Task ThePaginatedWallets_OfOneKind_LeaveTheOtherKindOut()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+        var context = dbContextFactory.Object.CreateDbContext();
+        context.Wallets.Add(new Wallet { Id = 1, Name = "multisig", IsFinalised = true, Keys = [] });
+        context.Wallets.Add(new Wallet { Id = 2, Name = "hot", IsFinalised = true, IsHotWallet = true, MofN = 1, Keys = [] });
+        context.Wallets.Add(new Wallet { Id = 3, Name = "transit", Kind = WalletKind.Spark, IsFinalised = true, IsHotWallet = true, MofN = 1, Keys = [] });
+        context.SaveChanges();
+
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
+
+        var (onChain, onChainCount) = await walletRepository.GetPaginatedAsync(1, 25, kind: WalletKind.OnChain);
+        onChain.Select(w => w.Id).Should().BeEquivalentTo([1, 2]);
+        onChainCount.Should().Be(2);
+        var (all, allCount) = await walletRepository.GetPaginatedAsync(1, 25);
+        all.Select(w => w.Id).Should().BeEquivalentTo([1, 2, 3]);
+        allCount.Should().Be(3);
+    }
 }

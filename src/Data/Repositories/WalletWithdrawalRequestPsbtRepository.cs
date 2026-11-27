@@ -22,6 +22,7 @@ using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NodeGuard.Helpers;
+using NodeGuard.Services;
 using Npgsql;
 
 namespace NodeGuard.Data.Repositories
@@ -37,11 +38,14 @@ namespace NodeGuard.Data.Repositories
         private readonly IRepository<WalletWithdrawalRequestPSBT> _repository;
         private readonly ILogger<WalletWithdrawalRequestPsbtRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+        private readonly IWithdrawalEventPublisher _withdrawalEventPublisher;
 
         public WalletWithdrawalRequestPsbtRepository(IRepository<WalletWithdrawalRequestPSBT> repository,
             ILogger<WalletWithdrawalRequestPsbtRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory,
+            IWithdrawalEventPublisher withdrawalEventPublisher)
         {
+            _withdrawalEventPublisher = withdrawalEventPublisher;
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
@@ -115,7 +119,11 @@ namespace NodeGuard.Data.Repositories
                 return (false, null);
             }
 
-            return await _repository.AddAsync(type, applicationDbContext);
+            var added = await _repository.AddAsync(type, applicationDbContext);
+            if (added.Item1 && request != null && !type.IsInternalWalletPSBT && !type.IsFinalisedPSBT)
+                _withdrawalEventPublisher.PublishSignatureAdded(request.WalletId, request.Id);
+
+            return added;
         }
 
         /// <summary>

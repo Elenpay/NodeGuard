@@ -26,7 +26,9 @@ using NBXplorer.Models;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using NodeGuard.TestHelpers;
+using NSpark.Models;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -42,6 +44,7 @@ public class AutoLiquidityManagementJobTests
     private Mock<IWalletRepository> _walletRepositoryMock;
     private Mock<INBXplorerService> _nbXplorerServiceMock;
     private Mock<IAuditService> _auditServiceMock;
+    private Mock<ISparkWalletService> _sparkWalletMock;
     private AutoLiquidityManagementJob _autoLiquidityManagementJob;
 
     public AutoLiquidityManagementJobTests()
@@ -55,6 +58,12 @@ public class AutoLiquidityManagementJobTests
         _walletRepositoryMock = new Mock<IWalletRepository>();
         _nbXplorerServiceMock = new Mock<INBXplorerService>();
         _auditServiceMock = new Mock<IAuditService>();
+        _sparkWalletMock = new Mock<ISparkWalletService>();
+        _sparkWalletMock.Setup(x => x.EnsureReadyAsync(It.IsAny<SparkWalletRef>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SparkWalletStatus(SparkWalletState.Ready, "02spark"));
+        _sparkWalletMock.Setup(x => x.GetWalletAsync(SparkWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SparkWalletEntry(SparkWallet, "transit", "02spark", SparkMaxBalanceSats));
+        SetSparkBalance(0);
 
         _autoLiquidityManagementJob = new AutoLiquidityManagementJob(
             _loggerMock.Object,
@@ -65,9 +74,19 @@ public class AutoLiquidityManagementJobTests
             _lightningServiceMock.Object,
             _walletRepositoryMock.Object,
             _nbXplorerServiceMock.Object,
-            _auditServiceMock.Object
+            _auditServiceMock.Object,
+            _sparkWalletMock.Object,
+            new SparkSettings { Enabled = true }
         );
     }
+
+    /// <summary>The Spark wallet of the swappable node, and its max balance</summary>
+    private static readonly SparkWalletRef SparkWallet = new(9);
+    private const long SparkMaxBalanceSats = 50_000_000;
+
+    private void SetSparkBalance(long owned, long incoming = 0) =>
+        _sparkWalletMock.Setup(x => x.GetBalanceAsync(SparkWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WalletBalance(new SatsBalance(owned, owned, incoming), [], []));
 
     private Node CreateTestNode(
         bool autoLiquidityEnabled = true,
@@ -75,7 +94,7 @@ public class AutoLiquidityManagementJobTests
         int? destinationWalletId = 1,
         long minSwapSats = 1_000_000,
         long maxSwapSats = 25_000_000,
-        int maxSwapsInFlight = 5,
+        int maxSwapsInFlight = 1,
         decimal maxSwapFeeRatio = 0.01m,
         long minBalanceThresholdSats = 100_000_000,
         long swapBudgetSats = 50_000_000,
@@ -90,10 +109,19 @@ public class AutoLiquidityManagementJobTests
             IsNodeDisabled = isDisabled,
             AutoLiquidityManagementEnabled = autoLiquidityEnabled,
             FundsDestinationWalletId = destinationWalletId,
-            SwapMinAmountSats = minSwapSats,
-            SwapMaxAmountSats = maxSwapSats,
-            MaxSwapsInFlight = maxSwapsInFlight,
-            MaxSwapRoutingFeeRatio = maxSwapFeeRatio,
+            // The same sizes for every provider, unless a test sets its own
+            LoopSwapMinAmountSats = minSwapSats,
+            LoopSwapMaxAmountSats = maxSwapSats,
+            FortySwapMinAmountSats = minSwapSats,
+            FortySwapMaxAmountSats = maxSwapSats,
+            SparkSwapMinAmountSats = minSwapSats,
+            SparkSwapMaxAmountSats = maxSwapSats,
+            LoopMaxSwapsInFlight = maxSwapsInFlight,
+            FortySwapMaxSwapsInFlight = maxSwapsInFlight,
+            SparkMaxSwapsInFlight = maxSwapsInFlight,
+            LoopMaxSwapRoutingFeeRatio = maxSwapFeeRatio,
+            FortySwapMaxSwapRoutingFeeRatio = maxSwapFeeRatio,
+            SparkMaxSwapRoutingFeeRatio = maxSwapFeeRatio,
             MinimumBalanceThresholdSats = minBalanceThresholdSats,
             SwapBudgetSats = swapBudgetSats,
             SwapBudgetRefreshInterval = swapBudgetRefreshInterval ?? TimeSpan.FromDays(1),
@@ -292,6 +320,82 @@ public class AutoLiquidityManagementJobTests
         var node = CreateTestNode(
             minSwapSats: 1_000_000,
             maxSwapSats: 25_000_000,
+            maxSwapsInFlight: 1,
+            maxSwapFeeRatio: 0.01m,
+            minBalanceThresholdSats: 100_000_000,
+            swapBudgetSats: 50_000_000,
+            swapBudgetStartDatetime: DateTimeOffset.UtcNow.AddHours(-1));
+        var wallet = CreateTestWallet();
+
+        // Balance above threshold with 50M excess
+        var channelBalance = new ChannelBalanceResponse
+        {
+            LocalBalance = new Amount { Sat = 150_000_000 }
+        };
+        _lightningServiceMock.Setup(x => x.ChannelBalanceAsync(node))
+            .ReturnsAsync(channelBalance);
+
+        // No in-flight swaps
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id))
+            .ReturnsAsync(new List<SwapOut>());
+
+        // No consumed budget yet
+        _swapOutRepositoryMock.Setup(x => x.GetConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>()))
+            .ReturnsAsync(new Money(0, MoneyUnit.Satoshi));
+
+        _walletRepositoryMock.Setup(x => x.GetById(node.FundsDestinationWalletId!.Value))
+            .ReturnsAsync(wallet);
+
+        var keyPathInfo = new KeyPathInformation
+        {
+            Address = new NBitcoin.Key().PubKey.GetAddress(ScriptPubKeyType.Segwit, NBitcoin.Network.RegTest)
+        };
+        _nbXplorerServiceMock.Setup(x => x.GetUnusedAsync(
+            It.IsAny<DerivationStrategyBase>(),
+            It.IsAny<DerivationFeature>(),
+            It.IsAny<int>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(keyPathInfo);
+
+        var swapResponse = new SwapResponse
+        {
+            Id = "0102030405",
+            HtlcAddress = "bcrt1qtest",
+            Amount = 25_000_000,
+            ServerFee = 30_000,
+            OnchainFee = 15_000,
+            OffchainFee = 5_000,
+            Status = SwapOutStatus.Pending
+        };
+        _swapsServiceMock.Setup(x => x.CreateSwapOutAsync(
+            node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Loop), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapOutCreation(swapResponse, true, null));
+
+        // Act
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        // Assert
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+
+        // Verify swap was created and recorded with correct parameters
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s =>
+            s.NodeId == node.Id &&
+            s.DestinationWalletId == wallet.Id &&
+            s.Provider == SwapProvider.Loop &&
+            s.SatsAmount == 25_000_000 &&
+            s.IsManual == false),
+            It.Is<SwapOutRequest>(r => r.Address == keyPathInfo.Address.ToString() && r.Amount == 25_000_000),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WhenTheSwapCannotBeRecorded_ReturnsError()
+    {
+        // Arrange - Perfect conditions for a swap
+        var node = CreateTestNode(
+            minSwapSats: 1_000_000,
+            maxSwapSats: 25_000_000,
             maxSwapsInFlight: 5,
             maxSwapFeeRatio: 0.01m,
             minBalanceThresholdSats: 100_000_000,
@@ -341,26 +445,14 @@ public class AutoLiquidityManagementJobTests
             Status = SwapOutStatus.Pending
         };
         _swapsServiceMock.Setup(x => x.CreateSwapOutAsync(
-            node, SwapProvider.Loop, It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(swapResponse);
-
-        _swapOutRepositoryMock.Setup(x => x.AddAsync(It.IsAny<SwapOut>()))
-            .ReturnsAsync((true, null));
+            node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Loop), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapOutCreation(swapResponse, false, "database is down"));
 
         // Act
         var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
 
-        // Assert
-        result.Should().Be(ManageNodeLiquidityResult.Success);
-
-        // Verify swap was created with correct parameters
-        _swapOutRepositoryMock.Verify(x => x.AddAsync(It.Is<SwapOut>(s =>
-            s.NodeId == node.Id &&
-            s.DestinationWalletId == wallet.Id &&
-            s.Provider == SwapProvider.Loop &&
-            s.SatsAmount == 25_000_000 &&
-            s.IsManual == false &&
-            s.Status == SwapOutStatus.Pending)), Times.Once);
+        // Assert: the provider has the swap but NodeGuard could not record it
+        result.Should().Be(ManageNodeLiquidityResult.Error);
     }
 
     [Fact]
@@ -370,7 +462,7 @@ public class AutoLiquidityManagementJobTests
         var node = CreateTestNode(
             minSwapSats: 1_000_000,
             maxSwapSats: 25_000_000,
-            maxSwapsInFlight: 5,
+            maxSwapsInFlight: 1,
             maxSwapFeeRatio: 0.01m,
             minBalanceThresholdSats: 100_000_000,
             swapBudgetSats: 50_000_000,
@@ -421,11 +513,8 @@ public class AutoLiquidityManagementJobTests
             Status = SwapOutStatus.Pending
         };
         _swapsServiceMock.Setup(x => x.CreateSwapOutAsync(
-            node, SwapProvider.FortySwap, It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(swapResponse);
-
-        _swapOutRepositoryMock.Setup(x => x.AddAsync(It.IsAny<SwapOut>()))
-            .ReturnsAsync((true, null));
+            node, It.Is<SwapOut>(s => s.Provider == SwapProvider.FortySwap), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapOutCreation(swapResponse, true, null));
 
         // Act
         var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
@@ -434,13 +523,435 @@ public class AutoLiquidityManagementJobTests
         result.Should().Be(ManageNodeLiquidityResult.Success);
 
         // Verify swap was created with FortySwap provider (not Loop)
-        _swapOutRepositoryMock.Verify(x => x.AddAsync(It.Is<SwapOut>(s =>
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s =>
             s.NodeId == node.Id &&
             s.DestinationWalletId == wallet.Id &&
             s.Provider == SwapProvider.FortySwap &&
             s.SatsAmount == 25_000_000 &&
-            s.IsManual == false &&
-            s.Status == SwapOutStatus.Pending)), Times.Once);
+            s.IsManual == false),
+            It.Is<SwapOutRequest>(r => r.Address == keyPathInfo.Address.ToString()),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    #endregion
+
+    #region Spark Provider Tests
+
+    /// <summary>A node with 50M sats above its threshold and no swap in flight: the job will swap 25M.</summary>
+    private (Node Node, KeyPathInformation Address) ArrangeSwappableNode(int loopWeight, int fortySwapWeight, int sparkWeight)
+    {
+        var node = CreateTestNode(swapBudgetStartDatetime: DateTimeOffset.UtcNow.AddHours(-1));
+        node.LoopSwapWeight = loopWeight;
+        node.FortySwapWeight = fortySwapWeight;
+        node.SparkSwapWeight = sparkWeight;
+        node.SparkWalletId = SparkWallet.WalletId;
+
+        _lightningServiceMock.Setup(x => x.ChannelBalanceAsync(node))
+            .ReturnsAsync(new ChannelBalanceResponse { LocalBalance = new Amount { Sat = 150_000_000 } });
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id)).ReturnsAsync(new List<SwapOut>());
+        _swapOutRepositoryMock.Setup(x => x.GetConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>()))
+            .ReturnsAsync(new Money(0, MoneyUnit.Satoshi));
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut>());
+        _walletRepositoryMock.Setup(x => x.GetById(node.FundsDestinationWalletId!.Value)).ReturnsAsync(CreateTestWallet());
+
+        var address = new KeyPathInformation
+        {
+            Address = new NBitcoin.Key().PubKey.GetAddress(ScriptPubKeyType.Segwit, NBitcoin.Network.RegTest)
+        };
+        _nbXplorerServiceMock.Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
+                It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(address);
+        _swapsServiceMock.Setup(x => x.CreateSwapOutAsync(node, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapOutCreation(new SwapResponse { Id = "swap-1", HtlcAddress = string.Empty, Status = SwapOutStatus.Pending }, true, null));
+
+        return (node, address);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithSparkWeight_CreatesSwapOutWithSparkProvider_ReservingNoAddress()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == 25_000_000 && !s.IsManual &&
+                                s.DestinationWalletId == node.FundsDestinationWalletId),
+            It.Is<SwapOutRequest>(r => r.Address == null),
+            It.IsAny<CancellationToken>()), Times.Once);
+        // A Spark swap reserves its address when it exits
+        _nbXplorerServiceMock.Verify(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
+            It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WhileASparkSwapIsInFlight_BelowTheNodesMaxSwapsInFlight_SwapsThroughSparkAgain()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkMaxSwapsInFlight = 2;
+        var inFlight = new SwapOut
+        {
+            Id = 9, NodeId = node.Id, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SparkIdentity = "02spark"
+        };
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id)).ReturnsAsync(new List<SwapOut> { inFlight });
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { inFlight });
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithOnlySparkWeight_WhenSparkIsUnavailable_SkipsWithoutReservingAnAddress()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        _sparkWalletMock.Setup(x => x.EnsureReadyAsync(SparkWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SparkWalletStatus(SparkWalletState.Unavailable, Reason: "down"));
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.NoProviderAvailable);
+        _nbXplorerServiceMock.Verify(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
+            It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WhenSparkIsUnavailable_UsesTheOtherWeightedProviders()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 50, sparkWeight: 50);
+        _sparkWalletMock.Setup(x => x.EnsureReadyAsync(SparkWallet, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SparkWalletStatus(SparkWalletState.Unavailable, Reason: "the signer is not the expected one"));
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s => s.Provider == SwapProvider.FortySwap),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithOnlySparkWeight_ForANodeWithoutASparkWallet_Skips()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkWalletId = null;
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.NoProviderAvailable);
+        _sparkWalletMock.Verify(x => x.EnsureReadyAsync(It.IsAny<SparkWalletRef>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithSpark_WhileAnotherSparkWalletHasASwapInFlight_StillSwaps()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending())
+            .ReturnsAsync(new List<SwapOut> { new() { Id = 9, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SparkIdentity = "02other" } });
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithSpark_ClampsTheSwapToTheRoomUnderTheMaxBalance()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        SetSparkBalance(owned: 35_000_000, incoming: 5_000_000);
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == 10_000_000),
+            It.Is<SwapOutRequest>(r => r.Amount == 10_000_000),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithSpark_TheRoomLeavesOutWhatUnpaidSwapsWillBringIn()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        SetSparkBalance(owned: 30_000_000);
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut>
+        {
+            new() { Id = 9, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SatsAmount = 10_000_000, SparkIdentity = "02spark" }
+        });
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == 10_000_000),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithOnlySparkWeight_WhenTheRoomIsBelowTheNodeMinimum_SkipsWithoutReservingAnAddress()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        SetSparkBalance(owned: SparkMaxBalanceSats - node.SparkSwapMinAmountSats!.Value + 1);
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.NoProviderAvailable);
+        _nbXplorerServiceMock.Verify(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
+            It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WhenSparkHasNoRoom_UsesTheOtherWeightedProvidersForTheFullAmount()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 50, sparkWeight: 50);
+        SetSparkBalance(owned: SparkMaxBalanceSats);
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.FortySwap && s.SatsAmount == 25_000_000),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_SizesTheSwapWithTheChosenProvidersOwnMax()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkSwapMaxAmountSats = 2_000_000;
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == 2_000_000),
+            It.Is<SwapOutRequest>(r => r.Amount == 2_000_000), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithoutItsOwnSparkSizes_ANodeUsesTheSparkSettings()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkSwapMinAmountSats = null;
+        node.SparkSwapMaxAmountSats = null;
+
+        await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == SparkSettings.DefaultSwapMaxSats),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_AProviderWhoseMinIsAboveTheExcess_IsLeftOut_AndAnotherSwaps()
+    {
+        // 50M sats above the threshold: below Loop's min, within Spark's
+        var (node, _) = ArrangeSwappableNode(loopWeight: 50, fortySwapWeight: 0, sparkWeight: 50);
+        node.LoopSwapMinAmountSats = 60_000_000;
+        node.LoopSwapMaxAmountSats = 80_000_000;
+        node.SparkSwapMaxAmountSats = 2_000_000;
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == 2_000_000),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WhenTheExcessIsBelowEveryWeightedProvidersMin_IsBelowMinimum_WithoutAskingSpark()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 50, fortySwapWeight: 0, sparkWeight: 50);
+        node.LoopSwapMinAmountSats = 60_000_000;
+        node.LoopSwapMaxAmountSats = 80_000_000;
+        node.SparkSwapMinAmountSats = 60_000_000;
+        node.SparkSwapMaxAmountSats = 80_000_000;
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.ExcessBalanceBelowMinimum);
+        _sparkWalletMock.Verify(x => x.GetBalanceAsync(It.IsAny<SparkWalletRef>(), It.IsAny<CancellationToken>()), Times.Never);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_AProviderAtItsMaxSwapsInFlight_IsLeftOut_AndAnotherSwaps()
+    {
+        // Loop runs one swap at a time and has one in flight; Spark runs up to five and has two
+        var (node, _) = ArrangeSwappableNode(loopWeight: 50, fortySwapWeight: 0, sparkWeight: 50);
+        node.LoopMaxSwapsInFlight = 1;
+        node.SparkMaxSwapsInFlight = 5;
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id)).ReturnsAsync(new List<SwapOut>
+        {
+            new() { Id = 1, Provider = SwapProvider.Loop, Status = SwapOutStatus.Pending },
+            new() { Id = 2, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending },
+            new() { Id = 3, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending }
+        });
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Loop),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithEveryWeightedProviderAtItsMaxSwapsInFlight_SwapsNothing()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 50, fortySwapWeight: 0, sparkWeight: 50);
+        node.LoopMaxSwapsInFlight = 1;
+        node.SparkMaxSwapsInFlight = 1;
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id)).ReturnsAsync(new List<SwapOut>
+        {
+            new() { Id = 1, Provider = SwapProvider.Loop, Status = SwapOutStatus.Pending },
+            new() { Id = 2, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending }
+        });
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.MaxSwapsInFlightReached);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private void VerifySwaps(Node node, SwapProvider provider, params long[] amounts)
+    {
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(amounts.Length));
+        foreach (var amount in amounts.Distinct())
+        {
+            _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+                It.Is<SwapOut>(s => s.Provider == provider && s.SatsAmount == amount),
+                It.Is<SwapOutRequest>(r => r.Amount == amount), It.IsAny<CancellationToken>()),
+                Times.Exactly(amounts.Count(a => a == amount)));
+        }
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_ARunFillsTheProvidersFreeSlots()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkMaxSwapsInFlight = 5;
+        node.SparkSwapMaxAmountSats = 2_000_000;
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        VerifySwaps(node, SwapProvider.Spark, 2_000_000, 2_000_000, 2_000_000, 2_000_000, 2_000_000);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_ARunOnlyFillsTheSlotsLeftFree()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkMaxSwapsInFlight = 5;
+        node.SparkSwapMaxAmountSats = 2_000_000;
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id)).ReturnsAsync(new List<SwapOut>
+        {
+            new() { Id = 1, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending },
+            new() { Id = 2, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending }
+        });
+
+        await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        VerifySwaps(node, SwapProvider.Spark, 2_000_000, 2_000_000, 2_000_000);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_ARunsSparkSwapsFitTheWalletsRoom()
+    {
+        // 5,000,000 sats of room: two full swaps, then what is left, which still meets the 1,000,000 min
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkMaxSwapsInFlight = 5;
+        node.SparkSwapMaxAmountSats = 2_000_000;
+        SetSparkBalance(owned: SparkMaxBalanceSats - 5_000_000);
+
+        await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        VerifySwaps(node, SwapProvider.Spark, 2_000_000, 2_000_000, 1_000_000);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_ARunsSwapsFitTheExcessBalance()
+    {
+        // 50,000,000 sats above the threshold, 20,000,000 per swap
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkMaxSwapsInFlight = 5;
+        node.SparkSwapMaxAmountSats = 20_000_000;
+
+        await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        VerifySwaps(node, SwapProvider.Spark, 20_000_000, 20_000_000, 10_000_000);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_ARunsSwapsStopWhenTheirWorstCaseFeesWouldExceedTheBudget()
+    {
+        // 1% of each 2,000,000-sat swap is 20,000 sats: the 50,000-sat budget takes two
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkMaxSwapsInFlight = 5;
+        node.SparkSwapMaxAmountSats = 2_000_000;
+        node.SwapBudgetSats = 50_000;
+
+        await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        VerifySwaps(node, SwapProvider.Spark, 2_000_000, 2_000_000);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_ARunsLoopSwapsEachGetTheirOwnAddress_AndTheirProvidersRoutingFee()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 100, fortySwapWeight: 0, sparkWeight: 0);
+        node.LoopMaxSwapsInFlight = 2;
+        node.LoopMaxSwapRoutingFeeRatio = 0.003m;
+        node.SparkMaxSwapRoutingFeeRatio = 0.02m;
+
+        await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        VerifySwaps(node, SwapProvider.Loop, 25_000_000, 25_000_000);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.IsAny<SwapOut>(),
+            It.Is<SwapOutRequest>(r => r.MaxRoutingFeesPercent == 0.3m), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _nbXplorerServiceMock.Verify(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
+            It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_ASwapThatCannotBeCreated_EndsTheRun_KeepingTheOnesStarted()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        node.SparkMaxSwapsInFlight = 5;
+        node.SparkSwapMaxAmountSats = 2_000_000;
+        _swapsServiceMock.SetupSequence(x => x.CreateSwapOutAsync(node, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapOutCreation(new SwapResponse { Id = "swap-1", HtlcAddress = string.Empty, Status = SwapOutStatus.Pending }, true, null))
+            .ThrowsAsync(new InvalidOperationException("alice already has 1 Spark swaps in flight"));
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithAllWeightsAtZero_StillDefaultsToLoop()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 0);
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Loop),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     #endregion

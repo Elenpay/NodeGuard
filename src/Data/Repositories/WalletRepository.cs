@@ -81,7 +81,8 @@ namespace NodeGuard.Data.Repositories
             bool coldWalletFilter = false,
             bool finalisedFilter = false,
             DateTimeOffset? fromDate = null,
-            DateTimeOffset? toDate = null)
+            DateTimeOffset? toDate = null,
+            WalletKind? kind = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
@@ -93,6 +94,11 @@ namespace NodeGuard.Data.Repositories
             if (!string.IsNullOrWhiteSpace(nameFilter))
             {
                 query = query.Where(w => w.Name.Contains(nameFilter));
+            }
+
+            if (kind.HasValue)
+            {
+                query = query.Where(w => w.Kind == kind.Value);
             }
 
             switch (statusFilter)
@@ -160,7 +166,7 @@ namespace NodeGuard.Data.Repositories
 
             return await applicationDbContext.Wallets
                 .Where(w =>
-                    !w.IsArchived && !w.IsCompromised && w.IsFinalised &&
+                    !w.IsArchived && !w.IsCompromised && w.IsFinalised && w.Kind == WalletKind.OnChain &&
                     (type == WALLET_TYPE.Both || type == WALLET_TYPE.Cold && !w.IsHotWallet ||
                      type == WALLET_TYPE.Hot && w.IsHotWallet))
                 .Include(x => x.InternalWallet)
@@ -173,7 +179,7 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.Wallets
-                .Where(w => !w.IsArchived && !w.IsCompromised && w.IsFinalised && ids.Contains(w.Id))
+                .Where(w => !w.IsArchived && !w.IsCompromised && w.IsFinalised && w.Kind == WalletKind.OnChain && ids.Contains(w.Id))
                 .Include(x => x.InternalWallet)
                 .Include(x => x.Keys)
                 .ToListAsync();
@@ -184,7 +190,7 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             var availableWallets = await applicationDbContext.Wallets
-                .Where(wallet => !wallet.IsArchived && !wallet.IsCompromised && wallet.IsFinalised)
+                .Where(wallet => !wallet.IsArchived && !wallet.IsCompromised && wallet.IsFinalised && wallet.Kind == WalletKind.OnChain)
                 .Include(x => x.InternalWallet)
                 .Include(x => x.Keys)
                 .ToListAsync();
@@ -195,6 +201,16 @@ namespace NodeGuard.Data.Repositories
             }
 
             return availableWallets;
+        }
+
+        public async Task<List<Wallet>> GetSparkWallets(bool includeArchived = false)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Wallets
+                .Where(w => w.Kind == WalletKind.Spark && (includeArchived || !w.IsArchived))
+                .OrderBy(w => w.Id)
+                .ToListAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(Wallet type)
@@ -213,7 +229,8 @@ namespace NodeGuard.Data.Repositories
             }
 
 
-            if (type.IsBIP39Imported || type.IsWatchOnly)
+            // Spark wallets have no keys, so no internal wallet key either
+            if (type.IsBIP39Imported || type.IsWatchOnly || type.Kind == WalletKind.Spark)
             {
                 //Persist
 

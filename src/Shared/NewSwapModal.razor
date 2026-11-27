@@ -2,6 +2,7 @@
 @using NBXplorer.DerivationStrategy
 @using NBitcoin
 @using Blazorise
+@using NodeGuard.Services.Spark
 <Modal @ref="_modalRef">
     <ModalContent Centered>
         <ModalHeader>
@@ -14,7 +15,7 @@
                     <FieldLabel>Swap provider</FieldLabel>
                     <div class="d-flex">
                         <Select TValue="SwapProvider" @bind-Value="_selectedProvider" SelectedValueChanged="OnProviderChanged">
-                            @foreach (var provider in Enum.GetValues<SwapProvider>())
+                            @foreach (var provider in AvailableProviders)
                             {
                                 <SelectItem Value="@provider">@provider.GetDisplayName()</SelectItem>
                             }
@@ -192,22 +193,92 @@
 <ConfirmationModal
     @ref="_confirmationModal"
     Title="Are you sure?"
-    Body="@_confirmationModalBody"
     OkLabel="Yes, I am sure"
     OnCancel="@CloseConfirmationModal"
-    OnSubmit="@OnCreateSwap"/>
+    OnSubmit="@OnCreateSwap">
+    @* Written as markup, never as an HTML string: the names and the provider's error are HTML-encoded *@
+    @if (_confirmation is { } confirmation)
+    {
+        @if (confirmation.QuoteError is not null)
+        {
+            @:Quote was not successful because of the following error: <br><br>
+            <span style="color: red;">@confirmation.QuoteError</span><br><br>
+            @:The swap will be created with the following details:<br><br>
+        }
+        else
+        {
+            @:You are about to create a new swap with the following details:<br><br>
+        }
+
+        <strong>- Provider: </strong>@confirmation.Provider<br>
+        <strong>- Direction: </strong>@confirmation.Direction<br>
+        <strong>- Amount: </strong>@confirmation.Amount<br>
+        <strong>- Origin Node: </strong>@confirmation.NodeName<br>
+        <strong>- Destination Wallet: </strong>@confirmation.WalletName<br><br>
+
+        @if (confirmation.QuoteError is not null)
+        {
+            <span style="color: orange">The fees could not be estimated. Default values will be used.</span><br><br>
+            <br>
+        }
+        else if (confirmation.Quote is { } quote)
+        {
+            <strong>- Estimated Fees:</strong><br>
+            <ul>
+                <li><strong>Service Fee: </strong>@quote.ServiceFee</li>
+                @if (quote.SelectedServiceFee is not null)
+                {
+                    <li style="list-style-type: none;"><span style="color: orange;"> (You selected: @quote.SelectedServiceFee, it might not go through)</span></li>
+                }
+                <li><strong>Off-Chain Fee: </strong>@quote.OffChainFee</li>
+                @if (quote.SelectedRoutingFee is not null)
+                {
+                    <li style="list-style-type: none;"><span style="color: orange;"> (You selected: @quote.SelectedRoutingFee, it might not go through)</span></li>
+                }
+                <li><strong>On-Chain Fee: </strong>@quote.OnChainFee</li>
+                <li><strong>Total: </strong>@quote.TotalFees</li>
+            </ul>
+            <br>
+            <strong>- Estimated total cost: </strong>@quote.TotalCost<br>
+            @if (!quote.CouldEstimateRoutingFees)
+            {
+                <br><span style="color: orange;"><strong>Warning: </strong>Routing fees could not be estimated. The actual fees will be higher than 0.</span><br><br>
+            }
+            <br>
+        }
+        else if (confirmation.Spark is { } spark)
+        {
+            <strong>- Maximum fees:</strong><br>
+            <ul>
+                <li><strong>Off-Chain Fee: </strong>up to @spark.MaxRoutingFee</li>
+                <li><strong>Service Fee: </strong>Spark's fixed @SparkSwapService.ServiceFeeBps bps (@FeeFormat.Percent(SparkSwapService.ServiceFeeBps * 100L)), charged on the Lightning route: part of the off-chain fee</li>
+                <li><strong>On-Chain Fee</strong> (from Spark to L1: the SSP's exit fee and the L1 broadcast): up to @spark.MaxExitFee</li>
+            </ul><br>
+            @:The node starts paying its Spark wallet (@spark.Identity) as you confirm, and LND keeps
+            @:trying routes for up to @spark.PaymentTimeoutMinutes minutes (the node's Spark payment timeout);
+            @:the swap shows as pending on the Swaps page meanwhile.
+            @:Once paid, the swap waits in the Spark wallet until the wallet is full (no room left for another swap under its max balance),
+            @:then exits with the wallet's other paid swaps in one on-chain transaction to the destination wallet, sharing its fee,
+            @:at exit speed @SparkSettings.ExitSpeedSummary.
+            @:Up to @spark.MaxSwapsInFlight Spark swaps of @confirmation.NodeName (its Spark max swaps in flight) are paid at once.<br><br>
+        }
+
+        @:Please confirm that you want to proceed.
+    }
+</ConfirmationModal>
 
 @inject ISwapsService SwapsService
 @inject IToastService ToastService
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
-@inject ISwapOutRepository SwapOutRepository
 @inject INBXplorerService NBXplorerService
 @inject ILightningService LightningService
 @inject IBitcoinService BitcoinService
 @inject IPriceConversionService PriceConversionService
 @inject ILogger<NewSwapModal> Logger
 @inject IAuditService AuditService
+@inject ISparkWalletService SparkWallet
+@inject SparkSettings SparkSettings
 @inherits CancellableComponent
 @code {
     [CascadingParameter] public required ApplicationUser LoggedUser { get; set; }
@@ -223,15 +294,33 @@
     private Wallet? _selectedWallet;
     private string? _amountInWalletBtc;
     private List<Node> _availableNodes = [];
+
+    /// <summary>Why Spark lists no node, when it lists none</summary>
+    private string? _noSparkNodesReason;
     private Node? _selectedNode;
     private string? _amountInNodeBtc;
-    private string _confirmationModalBody = string.Empty;
+    private SwapConfirmation? _confirmation;
+
+    /// <summary>What the confirmation shows: the swap, plus its quote, the error of a failed quote or Spark's caps</summary>
+    private sealed record SwapConfirmation(string Provider, string Direction, string Amount, string? NodeName, string? WalletName,
+        string? QuoteError = null, QuotedFees? Quote = null, SparkCaps? Spark = null);
+
+    /// <summary>The selected fees are only set when the quoted fee is above what the user selected</summary>
+    private sealed record QuotedFees(string ServiceFee, string? SelectedServiceFee, string OffChainFee, string? SelectedRoutingFee,
+        string OnChainFee, string TotalFees, string TotalCost, bool CouldEstimateRoutingFees);
+
+    private sealed record SparkCaps(string MaxRoutingFee, string MaxExitFee, string? Identity, int PaymentTimeoutMinutes,
+        int MaxSwapsInFlight);
     private decimal _btcPrice;
     private bool _showAdvancedOptions = false;
     private int _swapPublicationDeadlineOffsetMinutes = Constants.IS_DEV_ENVIRONMENT ? 1 : 30;
     private int _maxMinerFeesPercent = 0;
     private decimal _maxRoutingFeesPercent = 0.5m;
     private int _sweepConfirmationTarget = Constants.IS_DEV_ENVIRONMENT ? 250 : 400;
+
+    /// <summary>A fee as a percentage of the swap amount</summary>
+    private string PercentOfAmount(Money fee) =>
+        FeeFormat.Percent(SwapOut.FeePpm(fee.Satoshi, (long)new Money(_amountBtc, MoneyUnit.BTC).Satoshi) ?? 0);
 
     private string FormatBtcWithUsd(decimal btcAmount)
     {
@@ -267,8 +356,14 @@
             var derivationStrategy = _selectedWallet.GetDerivationStrategy();
             ArgumentNullException.ThrowIfNull(derivationStrategy, nameof(derivationStrategy));
 
-            var btcAddress = await NBXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true, ComponentCancellationToken);
-            ArgumentNullException.ThrowIfNull(btcAddress, nameof(btcAddress));
+            // Loop and 40swap send to an address given now; a Spark swap reserves its own when it exits
+            string? address = null;
+            if (_selectedProvider != SwapProvider.Spark)
+            {
+                var btcAddress = await NBXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true, ComponentCancellationToken);
+                ArgumentNullException.ThrowIfNull(btcAddress, nameof(btcAddress));
+                address = btcAddress.Address.ToString();
+            }
 
             var amount = NBitcoin.Money.FromUnit(_amountBtc, NBitcoin.MoneyUnit.BTC);
             var swapRequest = new SwapOutRequest
@@ -276,7 +371,7 @@
                 Amount = amount,
                 MaxServiceFeesPercent = _maxServiceFeesPercent,
                 PrepayAmtSat = _confirmationModal.GetData<long>("PrepayAmtSat"),
-                Address = btcAddress.Address.ToString(),
+                Address = address,
                 SwapPublicationDeadlineMinutes = _swapPublicationDeadlineOffsetMinutes,
                 SweepConfTarget = _sweepConfirmationTarget,
                 MaxRoutingFeesPercent = _maxRoutingFeesPercent
@@ -291,22 +386,43 @@
                 swapRequest.MaxMinerFees = _maxMinerFeesPercent * amount.Satoshi / 100;
             }
 
-            var response = await SwapsService.CreateSwapOutAsync(_selectedNode, _selectedProvider, swapRequest, ComponentCancellationToken);
-
-            var saved = SwapOutRepository.AddAsync(new SwapOut
+            var (response, saved, saveError) = await SwapsService.CreateSwapOutAsync(_selectedNode, new SwapOut
             {
                 Provider = _selectedProvider,
-                ProviderId = response.Id,
-                Status = response.Status,
                 IsManual = true,
-                SatsAmount = response.Amount,
+                SatsAmount = amount.Satoshi,
                 DestinationWalletId = _selectedWallet.Id,
                 NodeId = _selectedNode.Id,
-                ServiceFeeSats = response.ServerFee,
-                LightningFeeSats = response.OffchainFee,
-                OnChainFeeSats = response.OnchainFee,
                 UserRequestorId = LoggedUser.Id,
-            });
+            }, swapRequest, ComponentCancellationToken);
+
+            if (!saved)
+            {
+                // The provider already has the swap but NodeGuard will not track it: report its id so it
+                // can be reconciled by hand, and close the dialog so it is not created twice
+                Logger.LogError("Swap {ProviderId} was created with {Provider} but could not be saved: {Error}",
+                    response.Id, _selectedProvider, saveError);
+                await AuditService.LogAsync(
+                    AuditActionType.SwapOutInitiated,
+                    AuditEventType.Failure,
+                    AuditObjectType.SwapOut,
+                    response.Id,
+                    new
+                    {
+                        NodeId = _selectedNode.Id,
+                        Provider = _selectedProvider.ToString(),
+                        AmountSats = response.Amount,
+                        DestinationWalletId = _selectedWallet.Id,
+                        ProviderId = response.Id,
+                        IsManual = true,
+                        Error = saveError
+                    });
+                ToastService.ShowError($"Swap {response.Id} was created with the provider but could not be saved: {saveError}");
+
+                await _confirmationModal.CloseModal();
+                await _modalRef.Hide();
+                return;
+            }
 
             // Audit successful manual swap out creation
             await AuditService.LogAsync(
@@ -327,7 +443,19 @@
                     IsManual = true
                 });
 
-            ToastService.ShowSuccess("Swap created successfully");
+            if (response.Status == SwapOutStatus.Failed)
+            {
+                ToastService.ShowError($"The swap failed: {response.ErrorMessage}");
+            }
+            else if (_selectedProvider == SwapProvider.Spark)
+            {
+                // A Spark swap is paid in the background: its progress shows on the Swaps page
+                ToastService.ShowSuccess("Swap created: its payment is on its way. Follow it on the Swaps page");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Swap created successfully");
+            }
 
             await _confirmationModal.CloseModal();
             await _modalRef.Hide();
@@ -348,6 +476,12 @@
             Logger.LogError(ex, "Error creating swap");
             ToastService.ShowError(ex.Status.Detail);
         }
+        catch (Exception ex) when (ex is SparkUnavailableException or InvalidOperationException)
+        {
+            // Spark refusing the swap (unavailable, or the node at its Max swaps in flight): nothing was paid
+            Logger.LogWarning(ex, "Swap refused");
+            ToastService.ShowError(ex.Message);
+        }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error creating swap");
@@ -367,22 +501,20 @@
         var HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR", 0.015m);
         var PREPAY_AMT_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("PREPAY_AMT_SAT_ON_QUOTE_ERROR", 0.005m);
 
-        var middleChunkMessage = $"<strong>- Provider:</strong> {_selectedProvider.GetDisplayName()}<br>" +
-                $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
-                $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
-                $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
-                $"<strong>- Destination Wallet:</strong> {_selectedWallet?.Name}<br><br>";
-        
         ArgumentNullException.ThrowIfNull(_selectedWallet, nameof(_selectedWallet));
         ArgumentNullException.ThrowIfNull(_selectedNode, nameof(_selectedNode));
 
+        var swap = new SwapConfirmation(_selectedProvider.GetDisplayName(), _selectedDirection.ToString(),
+            FormatBtcWithUsd(_amountBtc), _selectedNode.Name, _selectedWallet.Name);
+
+        if (_selectedProvider == SwapProvider.Spark)
+        {
+            await ShowSparkConfirmationModal(swap);
+            return;
+        }
+
         var showErrorModal = async (string errorMessage) => {
-            _confirmationModalBody = "Quote was not successful because of the following error: <br><br>" +
-                $"<span style='color: red;'>{errorMessage}</span>" + "<br><br>" +
-                "The swap will be created with the following details:<br><br>" +
-                middleChunkMessage +
-                "<span style='color: orange'>The fees could not be estimated. Default values will be used.</span><br><br>" +
-                "<br>Please confirm that you want to proceed.";
+            _confirmation = swap with { QuoteError = errorMessage };
 
             var data = new Dictionary<string, object>
             {
@@ -406,36 +538,25 @@
             var onChainFee = new Money(quote.OnChainFees);
             var totalFees = new Money(quote.ServiceFees + quote.OffChainFees + quote.OnChainFees);
 
+            string WithPercent(Money fee) => $"{FormatBtcWithUsd(fee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(fee)})";
+
             var selectedServiceFee = _maxServiceFeesPercent * _amountBtc / 100;
-            var serviceFeeChunkMessage = $"<li><strong>Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}</li>";
-            if (serviceFee.ToUnit(MoneyUnit.BTC) > selectedServiceFee) {
-                serviceFeeChunkMessage += $"<li style='list-style-type: none;'><span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedServiceFee)}, it might not go through)</span></li>";
-            }
-
             var selectedRoutingFee = _maxRoutingFeesPercent * _amountBtc / 100;
-            var routingFeeChunkMessage = $"<li><strong>Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}</li>";
-            if (offChainFee.ToUnit(MoneyUnit.BTC) > selectedRoutingFee) {
-                routingFeeChunkMessage += $"<li style='list-style-type: none;'><span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedRoutingFee)}, it might not go through)</span></li>";
-            }
+            var totalFeesBtc = FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC));
 
-            _confirmationModalBody = $"You are about to create a new swap with the following details:<br><br>" +
-                middleChunkMessage +
-                $"<strong>- Estimated Fees:</strong><br>" +
-                "<ul>"+
-                serviceFeeChunkMessage +
-                routingFeeChunkMessage +
-                $"<li><strong>On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}</li>" +
-                $"<li><strong>Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}</li>" +
-                "</ul>"+
-                "<br>" +
-                $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))} (Percentage of total swap: {Math.Round(totalFees.ToUnit(MoneyUnit.BTC) / _amountBtc * 100, 2)}%)<br>";
-
-            if (!quote.CouldEstimateRoutingFees)
+            _confirmation = swap with
             {
-                _confirmationModalBody += "<br>" + $"<span style='color: orange;'><strong>Warning:</strong> Routing fees could not be estimated. The actual fees will be higher than 0.</span><br><br>";
-            }
-                
-            _confirmationModalBody += $"<br>Please confirm that you want to proceed.";
+                Quote = new QuotedFees(
+                    ServiceFee: WithPercent(serviceFee),
+                    SelectedServiceFee: serviceFee.ToUnit(MoneyUnit.BTC) > selectedServiceFee ? FormatBtcWithUsd(selectedServiceFee) : null,
+                    OffChainFee: WithPercent(offChainFee),
+                    SelectedRoutingFee: offChainFee.ToUnit(MoneyUnit.BTC) > selectedRoutingFee ? FormatBtcWithUsd(selectedRoutingFee) : null,
+                    OnChainFee: WithPercent(onChainFee),
+                    TotalFees: WithPercent(totalFees),
+                    TotalCost: $"{totalFeesBtc} (Percentage of total swap: {Math.Round(totalFees.ToUnit(MoneyUnit.BTC) / _amountBtc * 100, 2)}%)",
+                    CouldEstimateRoutingFees: quote.CouldEstimateRoutingFees)
+            };
+
             var data = new Dictionary<string, object>
             {
                 { "HtlcSweepFeeSat", quote.HtlcSweepFeeSat },
@@ -453,6 +574,33 @@
             Logger.LogError(ex, "Error getting swap quote");
             await showErrorModal(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Spark has no up-front quote: the SSP quotes its exit fee for the leaves the payment brings in, so the
+    /// confirmation shows the caps the swap runs under instead
+    /// </summary>
+    private async Task ShowSparkConfirmationModal(SwapConfirmation swap)
+    {
+        var maxRoutingFee = new Money(_maxRoutingFeesPercent * _amountBtc / 100, MoneyUnit.BTC);
+        var maxExitFee = new Money(SparkSettings.MaxExitFeeSats);
+        var maxSwapsInFlight = Math.Max(_selectedNode?.SparkMaxSwapsInFlight ?? 0, 1);
+
+        _confirmation = swap with
+        {
+            Spark = new SparkCaps(
+                MaxRoutingFee: $"{FormatBtcWithUsd(maxRoutingFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxRoutingFee)})",
+                MaxExitFee: $"{FormatBtcWithUsd(maxExitFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxExitFee)})",
+                Identity: SparkIdentityOf(_selectedNode!),
+                PaymentTimeoutMinutes: SparkSettings.PaymentTimeoutFor(_selectedNode!),
+                MaxSwapsInFlight: maxSwapsInFlight)
+        };
+
+        await _confirmationModal.ShowModal(new Dictionary<string, object>
+        {
+            { "HtlcSweepFeeSat", 0L },
+            { "PrepayAmtSat", 0L }
+        });
     }
 
     private async Task CloseConfirmationModal()
@@ -474,8 +622,8 @@
         _selectedNode = null; // Reset selected node when provider changes
         _amountInNodeBtc = null;
         
-        // Close advanced options and reset advanced parameters when switching to 40swap
-        if (provider == SwapProvider.FortySwap)
+        // Close advanced options and reset advanced parameters when switching away from Loop (they are Loop's)
+        if (provider != SwapProvider.Loop)
         {
             _showAdvancedOptions = false;
         }
@@ -490,9 +638,50 @@
         {
             SwapProvider.Loop => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, LoggedUser.Id), Logger, ToastService, "Unexpected error loading Loop nodes, please try again later", new()),
             SwapProvider.FortySwap => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, LoggedUser.Id), Logger, ToastService, "Unexpected error loading 40swap nodes, please try again later", new()),
+            SwapProvider.Spark => await ToastOnException.ExecuteAsync(SparkReadyNodesAsync, Logger, ToastService, "Unexpected error loading nodes, please try again later", new()),
             _ => new List<Node>()
         };
     }
+
+    /// <summary>
+    /// The user's nodes whose Spark wallet is ready (its signer checked out). When there are none, says why in
+    /// <see cref="_noSparkNodesReason"/>
+    /// </summary>
+    private async Task<List<Node>> SparkReadyNodesAsync()
+    {
+        var managed = await NodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, LoggedUser.Id);
+        if (managed.Count == 0)
+        {
+            _noSparkNodesReason = "You manage no node: nodes are assigned to users on the Users page (Managed nodes).";
+            return managed;
+        }
+
+        var nodes = managed.Where(n => SparkSettings.WalletFor(n) is not null).ToList();
+        if (nodes.Count == 0)
+        {
+            _noSparkNodesReason = "None of the nodes you manage has a Spark wallet: create one on the Wallets page " +
+                                  "(New ▸ New Spark wallet) and choose it in the node's liquidity settings.";
+            return nodes;
+        }
+
+        var ready = new HashSet<SparkWalletRef>();
+        var unavailable = new List<string>();
+        foreach (var wallet in nodes.Select(n => SparkSettings.WalletFor(n)!.Value).Distinct())
+        {
+            var status = await SparkWallet.EnsureReadyAsync(wallet);
+            if (status.IsReady) ready.Add(wallet);
+            else unavailable.Add($"{wallet}: {status.Reason ?? status.State.ToString()}");
+        }
+
+        _noSparkNodesReason = ready.Count == 0 ? $"No node's Spark wallet is available ({string.Join("; ", unavailable)})." : null;
+        return nodes.Where(n => ready.Contains(SparkSettings.WalletFor(n)!.Value)).ToList();
+    }
+
+    private string? SparkIdentityOf(Node node) =>
+        SparkSettings.WalletFor(node) is { } wallet ? SparkWallet.GetStatus(wallet).IdentityPublicKey : null;
+
+    private IEnumerable<SwapProvider> AvailableProviders =>
+        Enum.GetValues<SwapProvider>().Where(p => p != SwapProvider.Spark || SparkSettings.Enabled);
     
     private async Task OnWalletChanged(int walletId)
     {
@@ -582,6 +771,10 @@
                             @if (_selectedNode != null)
                             {
                                 @(($"Amount in node: {FormatBtcWithUsd(decimal.Parse(_amountInNodeBtc ?? "0"))}"))
+                            }
+                            else if (_selectedProvider == SwapProvider.Spark && _availableNodes.Count == 0 && _noSparkNodesReason is not null)
+                            {
+                                <span class="text-warning">@_noSparkNodesReason</span>
                             }
                             else
                             {

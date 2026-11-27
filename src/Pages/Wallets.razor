@@ -20,11 +20,22 @@
 @inject INBXplorerService NBXplorerService
 @inject IUTXOTagRepository UTXOTagRepository
 @inject IAuditService AuditService
+@inject NodeGuard.Services.Spark.SparkSettings SparkSettings
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
 <h3 class="custom-primary">Treasury Wallets</h3>
-<Row>
+<Tabs SelectedTab="@_pageTab" SelectedTabChanged="@(name => _pageTab = name)" RenderMode="TabsRenderMode.LazyLoad">
+    <Items>
+        <Tab Name="Treasury">Treasury</Tab>
+        @if (SparkSettings.Enabled)
+        {
+            <Tab Name="Spark">Spark</Tab>
+        }
+    </Items>
+    <Content>
+<TabPanel Name="Treasury">
+<Row Margin="Margin.Is3.FromTop">
     <Column ColumnSize="ColumnSize.Is12">
         <Row Class="mb-3" @key="_filtersResetKey">
             <Column ColumnSize="ColumnSize.Is2">
@@ -269,6 +280,15 @@
         </DataGrid>
     </Column>
 </Row>
+</TabPanel>
+@if (SparkSettings.Enabled)
+{
+    <TabPanel Name="Spark">
+        <SparkWallets />
+    </TabPanel>
+}
+    </Content>
+</Tabs>
 
 <Modal @ref="_modalRef">
     <ModalContent Centered Size="ModalSize.ExtraLarge">
@@ -785,6 +805,7 @@
 
     private Modal _modalRef;
     private string _selectedTab = "Balance";
+    private string _pageTab = "Treasury";
 
     private List<Wallet> _wallets = new();
 
@@ -943,7 +964,8 @@ DateTimeKind.Local)).ToUniversalTime()
             coldWalletFilter: _coldWalletFilter,
             finalisedFilter: _finalisedWalletFilter,
             fromDate: fromDate,
-            toDate: toDate);
+            toDate: toDate,
+            kind: WalletKind.OnChain);
 
         _wallets = wallets;
         _totalItems = totalCount;
