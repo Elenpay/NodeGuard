@@ -469,11 +469,25 @@
 <ConfirmationModal
     @ref="_hotWalletPromotionConfirmationModal"
     Title="Are you sure?"
-    Body="This node funds channel opens from a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
     OkLabel="Yes, I am sure"
     OkDisabled="@_busy"
     OnCancel="@HotWalletPromotionCloseConfirmationModal"
-    OnSubmit="@HotWalletPromotionSubmitConfirmationModal"/>
+    OnSubmit="@HotWalletPromotionSubmitConfirmationModal">
+    <p>This node funds channel opens from a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?</p>
+    @if (_swapOutWarning != null)
+    {
+        <p>@_swapOutWarning</p>
+    }
+</ConfirmationModal>
+
+<ConfirmationModal
+    @ref="_swapOutPromotionConfirmationModal"
+    Title="Swap-out warning"
+    Body="@(_swapOutWarning ?? "")"
+    OkLabel="Open anyway"
+    OkDisabled="@_busy"
+    OnCancel="@SwapOutPromotionCloseConfirmationModal"
+    OnSubmit="@SwapOutPromotionSubmitConfirmationModal"/>
 
 @inject INodeRepository NodeRepository
 @inject IChannelRepository ChannelRepository
@@ -482,6 +496,7 @@
 @inject IChannelOpenRecommendationRepository ChannelOpenRecommendationRepository
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOpenPromotionService ChannelOpenPromotionService
+@inject ISwapOutWarningService SwapOutWarningService
 @inject IWalletRepository WalletRepository
 @inject IFeeEngineStateService FeeEngineStateService
 @inject IAuditService AuditService
@@ -524,7 +539,9 @@
     private List<ChannelOpenRecommendation> _recommendations = new();
     private Dictionary<string, string> _recommendationPeerNames = new();
     private ConfirmationModal _hotWalletPromotionConfirmationModal = null!;
-    private ChannelOpenRecommendation? _pendingHotWalletPromotion;
+    private ConfirmationModal _swapOutPromotionConfirmationModal = null!;
+    private ChannelOpenRecommendation? _pendingPromotion;
+    private string? _swapOutWarning;
     private readonly Dictionary<int, long> _editedCapacities = new();
     private long? _channelOpenCommittedSats;
 
@@ -921,12 +938,30 @@
     {
         if (_busy || LoggedUser is null || !_isFinanceManager || rec.NodeId != _selectedNode?.Id) return;
 
+        Wallet? wallet;
+        _busy = true;
+        try
+        {
+            wallet = _selectedNode.AutoChannelOpenWalletId is { } walletId ? await WalletRepository.GetById(walletId) : null;
+            _swapOutWarning = await SwapOutWarningService.ForChannelOpenAsync(rec.NodeId, GetEditedCapacity(rec));
+        }
+        finally
+        {
+            _busy = false;
+        }
+
         // A hot wallet skips the approval step and opens straight away, so confirm it like Channel Requests does.
-        var wallet = _selectedNode.AutoChannelOpenWalletId is { } walletId ? await WalletRepository.GetById(walletId) : null;
         if (wallet is { IsHotWallet: true })
         {
-            _pendingHotWalletPromotion = rec;
+            _pendingPromotion = rec;
             await _hotWalletPromotionConfirmationModal.ShowModal();
+            return;
+        }
+
+        if (_swapOutWarning != null)
+        {
+            _pendingPromotion = rec;
+            await _swapOutPromotionConfirmationModal.ShowModal();
             return;
         }
 
@@ -935,15 +970,28 @@
 
     private async Task HotWalletPromotionCloseConfirmationModal()
     {
-        _pendingHotWalletPromotion = null;
+        _pendingPromotion = null;
         await _hotWalletPromotionConfirmationModal.CloseModal();
     }
 
     private async Task HotWalletPromotionSubmitConfirmationModal()
     {
-        var rec = _pendingHotWalletPromotion;
+        var rec = _pendingPromotion;
         await HotWalletPromotionCloseConfirmationModal();
         if (rec is not null) await PromoteRecommendationCore(rec, isHotWallet: true);
+    }
+
+    private async Task SwapOutPromotionCloseConfirmationModal()
+    {
+        _pendingPromotion = null;
+        await _swapOutPromotionConfirmationModal.CloseModal();
+    }
+
+    private async Task SwapOutPromotionSubmitConfirmationModal()
+    {
+        var rec = _pendingPromotion;
+        await SwapOutPromotionCloseConfirmationModal();
+        if (rec is not null) await PromoteRecommendationCore(rec, isHotWallet: false);
     }
 
     private async Task PromoteRecommendationCore(ChannelOpenRecommendation rec, bool isHotWallet)
