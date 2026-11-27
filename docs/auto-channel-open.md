@@ -1,6 +1,6 @@
 # Auto channel open
 
-Auto channel open proposes a new channel to a peer when two things are true: the route to that peer has been earning us fees, and we have recently been turning payments to it away for lack of outbound liquidity. The channel always has the same size, set per node.
+Auto channel open proposes a new channel to a peer when two things are true: the route to that peer has been earning us fees, and we have recently been turning payments to it away for lack of outbound liquidity. The channel always has the same size, set per node. Peers we want channels with regardless, such as a swap service, can be [reserved](#reserved-peers) a share of the budget.
 
 [`AutoChannelOpenJob`](../src/Jobs/AutoChannelOpenJob.cs) runs every 30 minutes (every minute in a dev environment) as part of the routing engine (see [routing-engine.md](routing-engine.md)). It writes recommendations, which an operator promotes from the Routing Management page. In **Auto** mode the job promotes them itself. Either way a promotion only creates a channel open request: funding still goes through the usual approval and signing flow.
 
@@ -37,7 +37,18 @@ Promoting creates a `ChannelOperationRequest` to open a public channel to the pe
 - With a **hot wallet** that needs no human signature, the template PSBT is built and `ChannelOpenJob` is scheduled straight away. If the template can't be built (no spendable coins), the request fails.
 - Otherwise the request stays **Pending** for the wallet's signers, like any other channel open.
 
-**The fee the channel opens at.** A new channel arrives with all its balance on our side, so at the node's default fee it would become the cheapest route to a peer we already know is in demand. It opens instead at the highest fee rate we currently charge on our channels to that peer, with the base fee of that same channel. The policy is captured with the evidence on every run, and the channel opens at the one captured last, without asking LND again at promotion.
+**The fee the channel opens at.** A new channel arrives with all its balance on our side, so at the node's default fee it would become the cheapest route to a peer we already know is in demand. It opens instead at the highest fee rate we currently charge on our channels to that peer, with the base fee of that same channel. The policy is captured with the evidence on every run, and the channel opens at the one captured last, without asking LND again at promotion. The one exception is a reserved peer we have no channel with: there is no fee to copy, so its channel opens at the node's default.
+
+## Reserved peers
+
+Some peers need channels whether or not they earn us anything. A swap service such as Loop is the usual case: our swap-outs are our own payments to it, not forwards, so the route to it never earns fees and never passes check 1. Each node can list such peers on the Nodes page (Automatic Channel Opening ▸ Reserved Peers). Each one is a node registered in NodeGuard, picked from a list, with a share of the budget in percent. The shares of a node add up to at most 100%.
+
+A reserved peer skips the evidence (checks 1, 2 and 5). It qualifies when:
+- the usable outbound to it is below `AUTO_CHANNEL_OPEN_LOW_OUTBOUND_PCT` of the capacity we have with it, or we have no channel with it at all;
+- it is not on cooldown;
+- the node's channel size fits the funding wallet and the budget left for it (see below).
+
+Reserved peers are evaluated ahead of the others in each run, so the per-run cap can't crowd them out. Their recommendations show a **reserved** badge on the Routing Management page, and the panel shows what each share has committed this period.
 
 ## Lifecycle
 
@@ -61,6 +72,13 @@ Each node has a channel open budget: the most it may commit to new channels per 
 
 What counts as committed is the capacity of every channel open request from the node created in the current period, except those cancelled, rejected or failed. That includes opens created by hand, not only the automatic ones. Within a run, every promotion is deducted before the next plan is checked.
 
+**Reserved shares.** Each reserved peer's share of the budget (its percentage) is set aside for it, and the rest is shared by every other peer:
+- An ordinary peer can only use the unreserved part.
+- A reserved peer uses its own share first, then the unreserved part.
+- Committed sats count against the peer the request opens to, so an open made by hand to a reserved peer uses up its share too. Whatever a reserved peer commits beyond its share comes out of the unreserved part.
+
+For example, with a 10 BTC budget and Loop reserved at 30%, other peers can commit at most 7 BTC, and Loop up to 3 BTC on its own share plus whatever the others leave of the 7.
+
 ## Settings
 
 **Environment** ([`Constants.cs`](../src/Helpers/Constants.cs)):
@@ -83,6 +101,7 @@ What counts as committed is the capacity of every channel open request from the 
 - **Funding wallet**: the wallet the channels are paid from. Required.
 - **Channel size**: the capacity of every recommended channel. Required, at least `MINIMUM_CHANNEL_CAPACITY_SATS`.
 - **Budget** and **budget refresh interval**. A budget is required.
+- **Reserved peers**: a registered node and a share of the budget for each. See [Reserved peers](#reserved-peers).
 - **Dry run**, shared with the fee engine and the rebalancer.
 
 A node without a funding wallet, channel size or budget is skipped, and the job logs why. The Routing Management page shows the size, the budget and what the current period has committed next to the recommendations, and warns when the feature is globally off or the node has no funding wallet.
@@ -94,3 +113,4 @@ A node without a funding wallet, channel size or budget is skipped, and the job 
 - **Earned fees are gross.** The rule doesn't weigh them against the on-chain cost of opening and closing the channel, or the cost of the capital locked in it.
 - **One size for every peer.** The channel doesn't grow with demand. A peer that needs more gets another recommendation once the cooldown has passed and it is short again.
 - **The budget is checked per recommendation.** In Recommendation mode several open recommendations may together exceed the remaining budget, and promoting from the panel doesn't check the budget again. The next run sees what was committed.
+- **A reserved peer's channel is invisible until it opens.** The job reads channels from `ListChannels`, which leaves out pending ones. An automatic open holds its peer until it confirms, but an open made by hand to a reserved peer we had no channel with doesn't: the peer looks channel-less, and is recommended again once its cooldown, if any, has passed. Its share still caps what it can be given.
