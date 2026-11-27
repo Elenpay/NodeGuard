@@ -37,6 +37,11 @@ public interface INodeRepository
     /// </summary>
     Task<Dictionary<string, string>> GetNamesByPubKeys(IReadOnlyCollection<string> pubKeys);
 
+    /// <summary>
+    /// Every registered node, managed or not, without its relationships. For node pickers.
+    /// </summary>
+    Task<List<Node>> GetAllForSelection();
+
     Task<List<Node>> GetAllManagedByUser(string userId);
     
     /// <summary>

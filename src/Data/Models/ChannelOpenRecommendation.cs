@@ -85,6 +85,10 @@ public class ChannelOpenRecommendation : Entity
     public long? InheritedFeeRatePpm { get; set; }
 
     public long? InheritedBaseFeeMsat { get; set; }
+
+    /// Qualified as a <see cref="ReservedChannelOpenPeer"/>, on outbound alone. With no channel to the
+    /// peer there is no policy to inherit, and the channel opens at the node's default fee.
+    public bool IsReservedPeer { get; set; }
     #endregion Evidence
 
     #region Lifecycle

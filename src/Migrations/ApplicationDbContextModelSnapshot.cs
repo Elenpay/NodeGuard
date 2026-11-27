@@ -523,6 +523,9 @@ namespace NodeGuard.Migrations
                     b.Property<long?>("InheritedFeeRatePpm")
                         .HasColumnType("bigint");
 
+                    b.Property<bool>("IsReservedPeer")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset>("LastEvidenceAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1312,6 +1315,39 @@ namespace NodeGuard.Migrations
                     b.ToTable("Rebalances");
                 });
 
+            modelBuilder.Entity("NodeGuard.Data.Models.ReservedChannelOpenPeer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BudgetPct")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreationDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("NodeId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PeerNodeId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdateDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PeerNodeId");
+
+                    b.HasIndex("NodeId", "PeerNodeId")
+                        .IsUnique();
+
+                    b.ToTable("ReservedChannelOpenPeers");
+                });
+
             modelBuilder.Entity("NodeGuard.Data.Models.SparkSignerIdentity", b =>
                 {
                     b.Property<int>("Id")
@@ -2042,6 +2078,25 @@ namespace NodeGuard.Migrations
                     b.Navigation("UserRequestor");
                 });
 
+            modelBuilder.Entity("NodeGuard.Data.Models.ReservedChannelOpenPeer", b =>
+                {
+                    b.HasOne("NodeGuard.Data.Models.Node", "Node")
+                        .WithMany("ReservedChannelOpenPeers")
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NodeGuard.Data.Models.Node", "PeerNode")
+                        .WithMany()
+                        .HasForeignKey("PeerNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Node");
+
+                    b.Navigation("PeerNode");
+                });
+
             modelBuilder.Entity("NodeGuard.Data.Models.SwapOut", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.Wallet", "DestinationWallet")
@@ -2142,6 +2197,8 @@ namespace NodeGuard.Migrations
                     b.Navigation("ChannelOperationRequestsAsDestination");
 
                     b.Navigation("ChannelOperationRequestsAsSource");
+
+                    b.Navigation("ReservedChannelOpenPeers");
 
                     b.Navigation("SwapOuts");
                 });

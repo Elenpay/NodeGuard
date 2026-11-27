@@ -181,4 +181,38 @@ public static class ValidationHelper
             return false;
         }
     }
+
+    /// <summary>
+    /// The first problem with a node's reserved channel open peers, or null when there is none.
+    /// </summary>
+    public static string? ValidateReservedChannelOpenPeers(IReadOnlyList<ReservedChannelOpenPeer> peers, int nodeId)
+    {
+        foreach (var peer in peers)
+        {
+            if (peer.PeerNodeId <= 0)
+            {
+                return "Choose a node for every reserved peer";
+            }
+
+            if (peer.PeerNodeId == nodeId)
+            {
+                return "A node can't be a reserved peer of itself";
+            }
+
+            if (peer.BudgetPct is < 1 or > 100)
+            {
+                return "Every reserved peer's budget share must be between 1 and 100%";
+            }
+        }
+
+        if (peers.GroupBy(x => x.PeerNodeId).Any(x => x.Count() > 1))
+        {
+            return "A peer is reserved more than once";
+        }
+
+        var totalPct = peers.Sum(x => x.BudgetPct);
+        return totalPct > 100
+            ? $"The reserved budget shares add up to {totalPct}%, above 100%"
+            : null;
+    }
 }

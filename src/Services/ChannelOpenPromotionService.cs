@@ -103,8 +103,10 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
             // A second channel to this peer arrives full, so at the global default it would be the
             // cheapest route to a peer the drain evidence proves is expensive. It opens at the price we
             // already charge that peer, captured with the evidence and gated on — asking LND again here
-            // would reprice off gossip and could contradict the number the operator approved.
-            if (recommendation.InheritedFeeRatePpm is null or < 0)
+            // would reprice off gossip and could contradict the number the operator approved. A reserved
+            // peer we had no channel with has no price to copy, so it opens at the node's default.
+            if (recommendation.InheritedFeeRatePpm is < 0
+                || (recommendation.InheritedFeeRatePpm is null && !recommendation.IsReservedPeer))
             {
                 return (false, $"Recommendation {recommendationId} carries no inherited fee policy, so there is no price to open at — it predates fee capture and will be replaced on the next run");
             }
@@ -164,12 +166,15 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
                     SuggestedCapacitySats = recommendation.SuggestedCapacitySats,
                     ApprovedCapacitySats = capacitySats,
                     PeerPubKey = recommendation.PeerPubKey,
+                    recommendation.IsReservedPeer,
                     InitialChannelBaseFeeMsat = recommendation.InheritedBaseFeeMsat,
                     InitialChannelFeeRatePpm = recommendation.InheritedFeeRatePpm,
                     Description = $"Channel open request created from recommendation {recommendationId} " +
                                   $"({capacitySats} sats, suggested {recommendation.SuggestedCapacitySats} sats, " +
-                                  $"opening at {recommendation.InheritedFeeRatePpm} ppm / {recommendation.InheritedBaseFeeMsat} msat, " +
-                                  $"the most we already charge this peer)"
+                                  (recommendation.InheritedFeeRatePpm is null
+                                      ? "opening at the node's default fee)"
+                                      : $"opening at {recommendation.InheritedFeeRatePpm} ppm / {recommendation.InheritedBaseFeeMsat} msat, " +
+                                        $"the most we already charge this peer)")
                 });
 
             _logger.LogInformation(
@@ -308,8 +313,9 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
     /// <summary>
     /// Summarised onto the request so an approver sees why it exists without leaving that page.
     /// </summary>
-    private static string BuildDescription(ChannelOpenRecommendation r) =>
-        $"Auto channel open: earned {r.EarnedFeeSats} sats in fees over {r.SettledOutSats} sats routed " +
-        $"in {Constants.AUTO_CHANNEL_OPEN_LOOKBACK_DAYS}d, {r.Refusals} forward(s) refused for lack of outbound " +
-        $"in {Constants.AUTO_CHANNEL_OPEN_SHORTAGE_HOURS}h, {r.UsableLocalSats} of {r.PeerCapacitySats} sats usable outbound.";
+    private static string BuildDescription(ChannelOpenRecommendation r) => r.IsReservedPeer
+        ? $"Auto channel open to a reserved peer: {r.UsableLocalSats} of {r.PeerCapacitySats} sats usable outbound."
+        : $"Auto channel open: earned {r.EarnedFeeSats} sats in fees over {r.SettledOutSats} sats routed " +
+          $"in {Constants.AUTO_CHANNEL_OPEN_LOOKBACK_DAYS}d, {r.Refusals} forward(s) refused for lack of outbound " +
+          $"in {Constants.AUTO_CHANNEL_OPEN_SHORTAGE_HOURS}h, {r.UsableLocalSats} of {r.PeerCapacitySats} sats usable outbound.";
 }

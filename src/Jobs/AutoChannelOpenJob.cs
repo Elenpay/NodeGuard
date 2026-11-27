@@ -147,8 +147,8 @@ public class AutoChannelOpenJob : IJob
             return;
         }
 
-        var remainingBudget = await GetRemainingBudget(node, now);
-        if (remainingBudget <= 0)
+        var budget = await GetBudget(node, now);
+        if (budget == null || budget.IsExhausted)
         {
             _logger.LogInformation("Node {NodeName}: channel open budget exhausted", node.Name);
             return;
@@ -162,7 +162,7 @@ public class AutoChannelOpenJob : IJob
         }
 
         var walletSpendableSats = await GetWalletSpendableSats(node, feeRate);
-        var tunables = ChannelOpenInitiatorTunables.FromConstants(node, walletSpendableSats, remainingBudget);
+        var tunables = ChannelOpenInitiatorTunables.FromConstants(node, walletSpendableSats, budget);
         var classification = ChannelOpenInitiatorService.Evaluate(peers, tunables);
 
         foreach (var rejection in classification.Rejected)
@@ -175,23 +175,25 @@ public class AutoChannelOpenJob : IJob
         // run — otherwise a per-run cap above 1 would commit the budget once per plan.
         foreach (var plan in classification.Plans)
         {
-            if (plan.SuggestedCapacitySats > remainingBudget)
+            var headroom = budget.HeadroomFor(plan.PeerPubKey);
+            if (plan.SuggestedCapacitySats > headroom)
             {
-                _logger.LogInformation("Node {NodeName}: skipping a {Capacity} sats plan, only {Remaining} sats of budget left",
-                    node.Name, plan.SuggestedCapacitySats, remainingBudget);
+                _logger.LogInformation("Node {NodeName}: skipping a {Capacity} sats plan to {Peer}, only {Remaining} sats of budget left for it",
+                    node.Name, plan.SuggestedCapacitySats, plan.PeerPubKey, headroom);
                 continue;
             }
 
             if (await RecordAndMaybePromote(node, plan))
             {
-                remainingBudget -= plan.SuggestedCapacitySats;
+                budget.Spend(plan.PeerPubKey, plan.SuggestedCapacitySats);
             }
         }
     }
 
     /// <summary>
-    /// One snapshot per peer that refused forwards in the shortage window. Every input is fetched once
-    /// for the whole node, never per channel.
+    /// One snapshot per peer that refused forwards in the shortage window, and one per reserved peer
+    /// whatever its evidence, channel or not. Every input is fetched once for the whole node, never per
+    /// channel.
     /// </summary>
     private async Task<List<PeerSnapshot>> BuildPeerSnapshots(Node node, DateTimeOffset now)
     {
@@ -206,8 +208,12 @@ public class AutoChannelOpenJob : IJob
         var lastDecisionTask = _recommendationRepository.GetLastDecisionByPeer(node.Id);
         await Task.WhenAll(refusalsTask, feesTask, outTask, listChannelsTask, policyTask, lastDecisionTask);
 
+        var reserved = (node.ReservedChannelOpenPeers ?? [])
+            .Select(x => x.PeerNode!.PubKey)
+            .ToHashSet();
+
         var refusalsByChanId = refusalsTask.Result;
-        if (refusalsByChanId.Count == 0)
+        if (refusalsByChanId.Count == 0 && reserved.Count == 0)
         {
             return [];
         }
@@ -227,10 +233,19 @@ public class AutoChannelOpenJob : IJob
 
         // Fees and refusals on channels that have since closed are dropped with them: only the peer's
         // current channels map back to a pubkey.
-        return listChannels.Channels
+        var channelsByPeer = listChannels.Channels
             .GroupBy(x => x.RemotePubkey)
-            .Select(peerChannels => (Peer: peerChannels.Key, Channels: peerChannels.ToList()))
-            .Where(x => x.Channels.Sum(c => refusalsByChanId.GetValueOrDefault(c.ChanId)) > 0)
+            .ToDictionary(x => x.Key, x => x.ToList());
+
+        // A reserved peer with no channel yet still gets a snapshot, empty, so its first channel opens.
+        foreach (var peer in reserved.Where(x => !channelsByPeer.ContainsKey(x)))
+        {
+            channelsByPeer[peer] = [];
+        }
+
+        return channelsByPeer
+            .Select(peerChannels => (Peer: peerChannels.Key, Channels: peerChannels.Value))
+            .Where(x => reserved.Contains(x.Peer) || x.Channels.Sum(c => refusalsByChanId.GetValueOrDefault(c.ChanId)) > 0)
             .Select(x => new PeerSnapshot(
                 PeerPubKey: x.Peer,
                 EarnedFeeSats: x.Channels.Sum(c => feesByChanId.GetValueOrDefault(c.ChanId)) / 1000,
@@ -245,7 +260,8 @@ public class AutoChannelOpenJob : IJob
                     .Select(c => policyByChanId != null && policyByChanId.TryGetValue(c.ChanId, out var p) ? p : null)
                     .Where(p => p != null)
                     .MaxBy(p => p!.FeeRatePpm),
-                OnCooldown: lastDecisionByPeer.TryGetValue(x.Peer, out var last) && last > cooldownCutoff))
+                OnCooldown: lastDecisionByPeer.TryGetValue(x.Peer, out var last) && last > cooldownCutoff,
+                IsReserved: reserved.Contains(x.Peer)))
             .ToList();
     }
 
@@ -267,15 +283,16 @@ public class AutoChannelOpenJob : IJob
     }
 
     /// <summary>
-    /// Rolls the budget period over and persists it when elapsed — a Get that writes.
+    /// Rolls the budget period over and persists it when elapsed — a Get that writes. Null when the node
+    /// has no budget.
     /// </summary>
-    private async Task<long> GetRemainingBudget(Node node, DateTimeOffset now)
+    private async Task<ChannelOpenBudget?> GetBudget(Node node, DateTimeOffset now)
     {
         var budgetSats = node.AutoChannelOpenBudgetSats ?? 0;
         if (budgetSats <= 0)
         {
             _logger.LogInformation("Node {NodeName}: no channel open budget configured; skipping", node.Name);
-            return 0;
+            return null;
         }
 
         var refreshInterval = node.AutoChannelOpenBudgetRefreshInterval
@@ -289,9 +306,11 @@ public class AutoChannelOpenJob : IJob
         }
 
         var periodStart = node.AutoChannelOpenBudgetStartDatetime ?? now;
-        var committed = await _channelOperationRequestRepository.GetOpenSatsCommittedSince(node.Id, periodStart);
+        var committedByPeer = await _channelOperationRequestRepository.GetOpenSatsCommittedByPeerSince(node.Id, periodStart);
+        var reservedPctByPeer = (node.ReservedChannelOpenPeers ?? [])
+            .ToDictionary(x => x.PeerNode!.PubKey, x => x.BudgetPct);
 
-        return budgetSats - committed;
+        return ChannelOpenBudget.Build(budgetSats, reservedPctByPeer, committedByPeer);
     }
 
     /// <summary>
@@ -339,6 +358,7 @@ public class AutoChannelOpenJob : IJob
                 plan.Refusals,
                 plan.UsableLocalSats,
                 plan.PeerCapacitySats,
+                plan.IsReservedPeer,
                 Description = $"Channel open recommended to {plan.PeerPubKey} for {plan.SuggestedCapacitySats} sats"
             });
 

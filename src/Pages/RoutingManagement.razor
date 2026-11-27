@@ -152,7 +152,7 @@
             <div class="panel" style="margin-bottom:16px">
                 <div class="panel-title">
                     <h2>Channel open recommendations</h2>
-                    <span class="hint">Peers that earned us fees and are now refusing forwards for lack of our outbound</span>
+                    <span class="hint">Peers that earned us fees and are now refusing forwards for lack of our outbound, and reserved peers short of outbound</span>
                 </div>
 
                 <div class="gates">
@@ -213,6 +213,14 @@
                         <span class="k">Committed this period</span>
                         <span class="v">@(_channelOpenCommittedSats is { } committed ? $"{Sats(committed)} sats" : "—")</span>
                     </div>
+                    @* Reserved peers are edited on the Nodes page too. Spend past a share comes out of the rest. *@
+                    @foreach (var reserved in _reservedPeers)
+                    {
+                        <div class="b-item">
+                            <span class="k">@ReservedPeerName(reserved) (@reserved.BudgetPct% reserved)</span>
+                            <span class="v">@ReservedShareText(reserved)</span>
+                        </div>
+                    }
                 </div>
 
                 @if (_recommendations.Count == 0)
@@ -241,6 +249,10 @@
                                         <td>
                                             <div class="peer-name">
                                                 <b>@RecommendationPeerName(rec)</b>
+                                                @if (rec.IsReservedPeer)
+                                                {
+                                                    <span class="cat-badge cat-source" title="Qualified as a reserved peer, on outbound alone">reserved</span>
+                                                }
                                                 <span class="pk mono">@StringHelper.TruncateTail(rec.PeerPubKey, 14)</span>
                                             </div>
                                         </td>
@@ -252,6 +264,10 @@
                                             @if (rec.InheritedFeeRatePpm is > 0)
                                             {
                                                 <span class="pk">@rec.InheritedFeeRatePpm ppm / @(rec.InheritedBaseFeeMsat ?? 0) msat</span>
+                                            }
+                                            else if (rec.IsReservedPeer && rec.InheritedFeeRatePpm is null)
+                                            {
+                                                <span class="pk" title="No channel to this peer to copy a fee from">node default</span>
                                             }
                                             else
                                             {
@@ -494,6 +510,7 @@
 @inject IChannelRoutingStateRepository ChannelRoutingStateRepository
 @inject IRebalanceRepository RebalanceRepository
 @inject IChannelOpenRecommendationRepository ChannelOpenRecommendationRepository
+@inject IReservedChannelOpenPeerRepository ReservedChannelOpenPeerRepository
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOpenPromotionService ChannelOpenPromotionService
 @inject ISwapOutWarningService SwapOutWarningService
@@ -544,6 +561,8 @@
     private string? _swapOutWarning;
     private readonly Dictionary<int, long> _editedCapacities = new();
     private long? _channelOpenCommittedSats;
+    private List<ReservedChannelOpenPeer> _reservedPeers = new();
+    private Dictionary<string, long> _channelOpenCommittedByPeer = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -823,8 +842,9 @@
 
             // Independent reads, each on its own DbContext from the factory — one round-trip instead of two.
             var recommendations = ChannelOpenRecommendationRepository.GetOpenByNode(nodeId);
-            var committed = ChannelOperationRequestRepository.GetOpenSatsCommittedSince(nodeId, periodStart);
-            await Task.WhenAll(recommendations, committed);
+            var committedByPeer = ChannelOperationRequestRepository.GetOpenSatsCommittedByPeerSince(nodeId, periodStart);
+            var reservedPeers = ReservedChannelOpenPeerRepository.GetByNode(nodeId);
+            await Task.WhenAll(recommendations, committedByPeer, reservedPeers);
 
             // A recommended peer may have no channel NodeGuard tracks, so names come from the Nodes table.
             var peerNames = await NodeRepository.GetNamesByPubKeys(recommendations.Result.Select(r => r.PeerPubKey).ToList());
@@ -834,7 +854,9 @@
 
             _recommendations = recommendations.Result;
             _recommendationPeerNames = peerNames;
-            _channelOpenCommittedSats = committed.Result;
+            _channelOpenCommittedByPeer = committedByPeer.Result;
+            _channelOpenCommittedSats = committedByPeer.Result.Values.Sum();
+            _reservedPeers = reservedPeers.Result;
         }
         catch (Exception ex)
         {
@@ -848,6 +870,16 @@
         _recommendationPeerNames = new Dictionary<string, string>();
         _editedCapacities.Clear();
         _channelOpenCommittedSats = null;
+        _reservedPeers = new List<ReservedChannelOpenPeer>();
+        _channelOpenCommittedByPeer = new Dictionary<string, long>();
+    }
+
+    private string ReservedShareText(ReservedChannelOpenPeer reserved)
+    {
+        if (_selectedNode?.AutoChannelOpenBudgetSats is not > 0 || _channelOpenCommittedSats is null) return "—";
+
+        var shareSats = _selectedNode.AutoChannelOpenBudgetSats.Value * reserved.BudgetPct / 100;
+        return $"{Sats(_channelOpenCommittedByPeer.GetValueOrDefault(reserved.PeerNode?.PubKey ?? ""))} / {Sats(shareSats)} sats";
     }
 
     // Falls back to the truncated pubkey, like the peers table.
@@ -855,6 +887,11 @@
         => _recommendationPeerNames.TryGetValue(rec.PeerPubKey, out var name) && !string.IsNullOrWhiteSpace(name)
             ? name
             : StringHelper.TruncateTail(rec.PeerPubKey, 12);
+
+    private static string ReservedPeerName(ReservedChannelOpenPeer reserved)
+        => string.IsNullOrWhiteSpace(reserved.PeerNode?.Name)
+            ? StringHelper.TruncateTail(reserved.PeerNode?.PubKey ?? "", 12)
+            : reserved.PeerNode.Name;
 
     // The suggested capacity is a starting point: an operator edits it here before promoting.
     private long GetEditedCapacity(ChannelOpenRecommendation rec)
