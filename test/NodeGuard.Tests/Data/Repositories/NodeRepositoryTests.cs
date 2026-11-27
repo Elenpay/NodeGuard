@@ -76,6 +76,29 @@ public class NodeRepositoryTests
         loopNodes.Select(n => n.Name).Should().BeEquivalentTo("with-loop");
     }
 
+    [Fact]
+    public async Task GetNamesByPubKeys_ReturnsOnlyRequestedNamedNodes()
+    {
+        // Arrange
+        var dbContextFactory = SetupDbContextFactory();
+        await using (var context = await dbContextFactory.Object.CreateDbContextAsync())
+        {
+            context.Nodes.AddRange(
+                new Node { Name = "bob", PubKey = "02b1" },
+                new Node { Name = "", PubKey = "02b2" },
+                new Node { Name = "carol", PubKey = "02b3" });
+            await context.SaveChangesAsync();
+        }
+
+        var nodeRepository = new NodeRepository(new Mock<IRepository<Node>>().Object, null, dbContextFactory.Object, null);
+
+        // Act
+        var names = await nodeRepository.GetNamesByPubKeys(new[] { "02b1", "02b2", "02unknown" });
+
+        // Assert
+        names.Should().BeEquivalentTo(new Dictionary<string, string> { ["02b1"] = "bob" });
+    }
+
     private static Node AutoOpenNode(string pubKey, bool enabled = true, int? walletId = 10,
         bool nodeDisabled = false)
         => new()
