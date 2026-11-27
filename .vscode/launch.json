@@ -58,7 +58,10 @@
               "API_TOKEN_SALT": "H/fCx1+maAFMcdi6idIYEg==",
               "AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES": "1",
               "MINIMUM_SWAP_OUT_SIZE_BTC": "0.00250000",
-              "ROUTING_ENGINE_ENABLED": "true"
+              "ROUTING_ENGINE_ENABLED": "true",
+              "AUTO_CHANNEL_OPEN_ENABLED": "true",
+              "AUTO_CHANNEL_OPEN_MIN_EARNED_FEE_SATS": "1",
+              "AUTO_CHANNEL_OPEN_MIN_REFUSALS": "3"
             },
             "sourceFileMap": {
                 "/Views": "${workspaceFolder}/Views"
