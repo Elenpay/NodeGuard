@@ -343,6 +343,35 @@ public class ChannelOpenPromotionServiceTests
         captured.InitialChannelBaseFeeMsat.Should().Be(1_000);
     }
 
+    [Fact]
+    public async Task Promote_ReservedPeerWithNoPolicyToInherit_OpensAtTheNodeDefaultFee()
+    {
+        // A reserved peer we had no channel with has nothing to copy, so the request carries no fee
+        // and the channel opens at the node's default.
+        ArrangePromotable();
+        _recommendationRepository
+            .Setup(x => x.GetById(RecommendationId))
+            .ReturnsAsync(() =>
+            {
+                var reserved = Recommendation();
+                reserved.IsReservedPeer = true;
+                reserved.InheritedFeeRatePpm = null;
+                reserved.InheritedBaseFeeMsat = null;
+                return reserved;
+            });
+        ChannelOperationRequest? captured = null;
+        _channelOperationRequestRepository
+            .Setup(x => x.AddAsync(It.IsAny<ChannelOperationRequest>()))
+            .ReturnsAsync((ChannelOperationRequest r) => { r.Id = 500; captured = r; return (true, (string?)null); });
+
+        var (ok, _) = await BuildService().Promote(RecommendationId, 5_000_000, userId: "u1");
+
+        ok.Should().BeTrue();
+        captured!.InitialChannelFeeRatePpm.Should().BeNull();
+        captured.InitialChannelBaseFeeMsat.Should().BeNull();
+        captured.Description.Should().Contain("reserved peer");
+    }
+
     // ── Promote: dispatch ──────────────────────────────────────────────────────────────
 
     [Fact]

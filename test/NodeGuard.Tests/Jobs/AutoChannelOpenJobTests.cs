@@ -45,6 +45,7 @@ public class AutoChannelOpenJobTests
     private const string SecondPeer = "03peer2";
     private const ulong SecondPeerChanId = 1002;
     private const long SizeSats = 5_000_000;
+    private const string ReservedPeer = "03loop";
 
     private readonly Mock<ILogger<AutoChannelOpenJob>> _logger = new();
     private readonly Mock<INodeRepository> _nodeRepository = new();
@@ -102,7 +103,8 @@ public class AutoChannelOpenJobTests
         long committedSats = 0,
         bool dryRun = false,
         long[]? walletUtxoSats = null,
-        bool secondPeer = false)
+        bool secondPeer = false,
+        int reservedPct = 0)
     {
         var node = new Node
         {
@@ -117,6 +119,10 @@ public class AutoChannelOpenJobTests
             AutoChannelOpenBudgetSats = budgetSats,
             AutoChannelOpenBudgetStartDatetime = DateTimeOffset.UtcNow.AddHours(-1),
             RoutingEngineDryRun = dryRun,
+            // No channel to the reserved peer: it only ever qualifies as reserved.
+            ReservedChannelOpenPeers = reservedPct > 0
+                ? [new ReservedChannelOpenPeer { NodeId = NodeId, PeerNode = new Node { PubKey = ReservedPeer }, BudgetPct = reservedPct }]
+                : [],
         };
 
         _nodeRepository.Setup(x => x.GetAllWithAutoChannelOpenEnabled()).ReturnsAsync(new List<Node> { node });
@@ -126,8 +132,8 @@ public class AutoChannelOpenJobTests
         _recommendationRepository.Setup(x => x.GetLastDecisionByPeer(NodeId))
             .ReturnsAsync(new Dictionary<string, DateTimeOffset>());
         _channelOperationRequestRepository
-            .Setup(x => x.GetOpenSatsCommittedSince(NodeId, It.IsAny<DateTimeOffset>()))
-            .ReturnsAsync(committedSats);
+            .Setup(x => x.GetOpenSatsCommittedByPeerSince(NodeId, It.IsAny<DateTimeOffset>()))
+            .ReturnsAsync(new Dictionary<string, long> { ["03elsewhere"] = committedSats });
 
         // Each channel alone falls short of both gates; only the peer-level sums clear them.
         var minFeeMsat = Constants.AUTO_CHANNEL_OPEN_MIN_EARNED_FEE_SATS * 1000;
@@ -450,6 +456,51 @@ public class AutoChannelOpenJobTests
 
         VerifyRecorded(Times.Once());
         _recommendationRepository.Verify(x => x.Upsert(It.Is<ChannelOpenRecommendation>(r => r.PeerPubKey == SecondPeer)), Times.Once);
+        VerifyPromoted(Times.Once());
+    }
+
+    // ── Reserved peers ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Execute_ReservedPeerWithNoChannel_IsRecordedAsReservedAtTheNodeDefaultFee()
+    {
+        ArrangeQualifyingPeer(reservedPct: 20);
+
+        await Run();
+
+        _recommendationRepository.Verify(x => x.Upsert(It.Is<ChannelOpenRecommendation>(r =>
+            r.PeerPubKey == ReservedPeer
+            && r.IsReservedPeer
+            && r.PeerCapacitySats == 0
+            && r.SuggestedCapacitySats == SizeSats
+            && r.InheritedFeeRatePpm == null)), Times.Once);
+        _recommendationRepository.Verify(x => x.Upsert(It.Is<ChannelOpenRecommendation>(r => r.PeerPubKey == Peer && !r.IsReservedPeer)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_NoRefusalsAnywhere_StillEvaluatesTheReservedPeer()
+    {
+        ArrangeQualifyingPeer(reservedPct: 20);
+        _forwardingHtlcEventRepository
+            .Setup(x => x.GetInsufficientBalanceCountsByChannel(NodePubKey, It.IsAny<DateTimeOffset>()))
+            .ReturnsAsync(new Dictionary<ulong, int>());
+
+        await Run();
+
+        VerifyRecorded(Times.Once());
+        _recommendationRepository.Verify(x => x.Upsert(It.Is<ChannelOpenRecommendation>(r => r.PeerPubKey == ReservedPeer)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_ReservedShareLeavesTooLittleForOthers_PromotesOnlyTheReservedPeer()
+    {
+        // A budget for two channels, 60% reserved: what is left for other peers is short of one channel.
+        ArrangeQualifyingPeer(mode: AutoChannelOpenMode.Auto, budgetSats: SizeSats * 2, reservedPct: 60);
+
+        await Run();
+
+        VerifyRecorded(Times.Once());
+        _recommendationRepository.Verify(x => x.Upsert(It.Is<ChannelOpenRecommendation>(r => r.PeerPubKey == ReservedPeer)), Times.Once);
         VerifyPromoted(Times.Once());
     }
 }

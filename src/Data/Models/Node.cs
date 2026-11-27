@@ -273,6 +273,8 @@ namespace NodeGuard.Data.Models
 
         public ICollection<ChannelOpenRecommendation> ChannelOpenRecommendations { get; set; }
 
+        public ICollection<ReservedChannelOpenPeer> ReservedChannelOpenPeers { get; set; }
+
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsDestination { get; set; }
 

@@ -73,7 +73,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.FundsDestinationWallet)
                 .SingleOrDefaultAsync(x => x.PubKey == key);
         }
-        
+
 
         public async Task<Node> GetOrCreateByPubKey(string pubKey, ILightningService lightningService)
         {
@@ -108,11 +108,21 @@ namespace NodeGuard.Data.Repositories
 
             return await applicationDbContext.Nodes
                 .Include(node => node.Users)
-                .Include(x=> x.ChannelOperationRequestsAsSource)
+                .Include(x => x.ChannelOperationRequestsAsSource)
                     .ThenInclude(request => request.Channel)
                 .Include(node => node.ChannelOperationRequestsAsDestination)
                     .ThenInclude(request => request.Channel)
-                .Include(x=> x.FundsDestinationWallet)
+                .Include(x => x.FundsDestinationWallet)
+                .ToListAsync();
+        }
+
+        public async Task<List<Node>> GetAllForSelection()
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Nodes
+                .AsNoTracking()
+                .OrderBy(node => node.Name)
                 .ToListAsync();
         }
 
@@ -146,15 +156,15 @@ namespace NodeGuard.Data.Repositories
 
             return resultAsync;
         }
-        
+
         public async Task<List<Node>> GetAllManagedByUser(string userId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.Nodes
-                .Include(x=> x.FundsDestinationWallet)
-                .Include(x=> x.ChannelOperationRequestsAsDestination)
-                .Include(x=> x.ChannelOperationRequestsAsSource)
+                .Include(x => x.FundsDestinationWallet)
+                .Include(x => x.ChannelOperationRequestsAsDestination)
+                .Include(x => x.ChannelOperationRequestsAsSource)
                 .Where(node => node.Endpoint != null
                                && node.Users.Any(user => user.Id == userId))
                 .ToListAsync();
@@ -174,10 +184,10 @@ namespace NodeGuard.Data.Repositories
 
             query = provider switch
             {
-                SwapProvider.Loop => query.Where(node => 
+                SwapProvider.Loop => query.Where(node =>
                     !string.IsNullOrEmpty(node.LoopdEndpoint) &&
                     !string.IsNullOrEmpty(node.LoopdMacaroon)),
-                SwapProvider.FortySwap => query.Where(node => 
+                SwapProvider.FortySwap => query.Where(node =>
                     !string.IsNullOrEmpty(node.FortySwapEndpoint)),
                 // Spark is NodeGuard's own wallet, not a per-node daemon: any managed LND node can pay into it
                 SwapProvider.Spark => query,
@@ -199,7 +209,7 @@ namespace NodeGuard.Data.Repositories
             return await applicationDbContext.Nodes
                 .Include(x => x.FundsDestinationWallet)
                 .ThenInclude(x => x.Keys)
-                .Where(node => !node.IsNodeDisabled && 
+                .Where(node => !node.IsNodeDisabled &&
                                node.AutoLiquidityManagementEnabled &&
                                node.FundsDestinationWalletId.HasValue)
                 .ToListAsync();
@@ -212,6 +222,8 @@ namespace NodeGuard.Data.Repositories
             return await applicationDbContext.Nodes
                 .Include(x => x.AutoChannelOpenWallet)
                 .ThenInclude(x => x!.Keys)
+                .Include(x => x.ReservedChannelOpenPeers)
+                .ThenInclude(x => x.PeerNode)
                 .Where(node => !node.IsNodeDisabled &&
                                node.AutoChannelOpenEnabled &&
                                node.AutoChannelOpenWalletId.HasValue)

@@ -51,6 +51,12 @@ public interface IChannelOperationRequestRepository : IBitcoinRequestRepository
     /// </summary>
     Task<long> GetOpenSatsCommittedSince(int sourceNodeId, DateTimeOffset since);
 
+    /// <summary>
+    /// <see cref="GetOpenSatsCommittedSince"/> split by the peer's pubkey, for the reserved budget shares.
+    /// A request without a destination node is keyed by the empty string.
+    /// </summary>
+    Task<Dictionary<string, long>> GetOpenSatsCommittedByPeerSince(int sourceNodeId, DateTimeOffset since);
+
     Task<(List<ChannelOperationRequest> requests, int totalCount)> GetPaginatedAsync(
         int pageNumber,
         int pageSize,

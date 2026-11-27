@@ -185,6 +185,22 @@ namespace NodeGuard.Data
             modelBuilder.Entity<ChannelOpenRecommendation>()
                 .HasIndex(x => new { x.NodeId, x.PeerPubKey }).IsUnique();
 
+            modelBuilder.Entity<ReservedChannelOpenPeer>()
+                .HasOne(x => x.Node)
+                .WithMany(x => x.ReservedChannelOpenPeers)
+                .HasForeignKey(x => x.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Deleting the peer's node drops its reservations too, so none is left pointing nowhere.
+            modelBuilder.Entity<ReservedChannelOpenPeer>()
+                .HasOne(x => x.PeerNode)
+                .WithMany()
+                .HasForeignKey(x => x.PeerNodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ReservedChannelOpenPeer>()
+                .HasIndex(x => new { x.NodeId, x.PeerNodeId }).IsUnique();
+
             // These default ON: existing rows must be backfilled true (the C# initializer
             // only affects new in-code instances, not the DB column default / migration backfill).
             modelBuilder.Entity<Channel>().Property(x => x.IsDynamicFeeEnabled).HasDefaultValue(false);
@@ -239,5 +255,7 @@ namespace NodeGuard.Data
         public DbSet<SparkSignerIdentity> SparkSignerIdentities { get; set; }
 
         public DbSet<ChannelOpenRecommendation> ChannelOpenRecommendations { get; set; }
+
+        public DbSet<ReservedChannelOpenPeer> ReservedChannelOpenPeers { get; set; }
     }
 }

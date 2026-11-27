@@ -896,6 +896,59 @@
                                 </NumericPicker>
                             </Validation>
                         </Field>
+
+                        <Field>
+                            <FieldLabel>Reserved Peers</FieldLabel>
+                            <FieldHelp>
+                                Registered nodes with their own share of the budget, such as a swap service. They skip the earning evidence: a reserved peer gets a channel
+                                whenever its usable outbound is below @Constants.AUTO_CHANNEL_OPEN_LOW_OUTBOUND_PCT%, or we have no channel with it yet.
+                                Other peers can't spend a reserved share. A reserved peer spends its own share first, then the rest of the budget.
+                            </FieldHelp>
+                            @foreach (var peer in _reservedPeers)
+                            {
+                                <Row>
+                                    <Column ColumnSize="ColumnSize.Is9">
+                                        <SelectList TItem="Node"
+                                                    TValue="int"
+                                                    Data="@_reservablePeers"
+                                                    TextField="@(item => string.IsNullOrWhiteSpace(item.Name) ? item.PubKey : $"{item.Name} ({StringHelper.TruncateTail(item.PubKey, 12)})")"
+                                                    ValueField="@(item => item.Id)"
+                                                    @bind-SelectedValue="@peer.PeerNodeId"
+                                                    DefaultItemText="Choose a node" />
+                                    </Column>
+                                    <Column ColumnSize="ColumnSize.Is2">
+                                        <Addons>
+                                            <Addon AddonType="AddonType.Body">
+                                                <NumericPicker TValue="int"
+                                                               @bind-Value="@peer.BudgetPct"
+                                                               Decimals="0"
+                                                               Step="1"
+                                                               Min="1"
+                                                               Max="100"
+                                                               MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
+                                            </Addon>
+                                            <Addon AddonType="AddonType.End">
+                                                <AddonLabel>%</AddonLabel>
+                                            </Addon>
+                                        </Addons>
+                                    </Column>
+                                    <Column ColumnSize="ColumnSize.Is1">
+                                        <Button Color="Color.Danger" Outline Clicked="@(() => _reservedPeers.Remove(peer))" title="Remove">
+                                            <Icon Name="IconName.Delete" />
+                                        </Button>
+                                    </Column>
+                                </Row>
+                            }
+                            <Button Color="Color.Secondary" Outline Size="Size.Small" Clicked="@AddReservedPeer">
+                                <Icon Name="IconName.Add" /> Add reserved peer
+                            </Button>
+                            @if (_reservedPeers.Count > 0)
+                            {
+                                <FieldHelp>
+                                    Reserved: @(_reservedPeers.Sum(x => x.BudgetPct))% of the budget. Left for other peers: @(Math.Max(0, 100 - _reservedPeers.Sum(x => x.BudgetPct)))%.
+                                </FieldHelp>
+                            }
+                        </Field>
                     }
 
                     @if (_selectedNodeForLiquidity.DynamicFeeManagementEnabled || _selectedNodeForLiquidity.AutoRebalanceEnabled || _selectedNodeForLiquidity.AutoChannelOpenEnabled)
@@ -940,6 +993,7 @@
 @inject SparkSettings SparkSettings
 @inject ISparkWalletService SparkWallet
 @inject ISwapOutRepository SwapOutRepository
+@inject IReservedChannelOpenPeerRepository ReservedChannelOpenPeerRepository
 @implements IDisposable
 @code {
     private List<Node>? _nodes;
@@ -1007,6 +1061,10 @@
     private long _channelOpenBudgetSats;
     private int _channelOpenBudgetRefreshDays;
     private long _channelOpenSizeSats;
+
+    // Edited in place and saved as a whole with the modal; the rows are never tracked entities.
+    private List<ReservedChannelOpenPeer> _reservedPeers = new();
+    private List<Node> _reservablePeers = new();
 
     public abstract class NodesColumnName
     {
@@ -1391,6 +1449,12 @@
         _channelOpenBudgetSats = node.AutoChannelOpenBudgetSats ?? 0;
         _channelOpenBudgetRefreshDays = node.AutoChannelOpenBudgetRefreshInterval?.Days ?? 0;
         _channelOpenSizeSats = node.AutoChannelOpenSizeSats ?? 0;
+        _reservedPeers = (await ReservedChannelOpenPeerRepository.GetByNode(node.Id))
+            .Select(x => new ReservedChannelOpenPeer { PeerNodeId = x.PeerNodeId, BudgetPct = x.BudgetPct })
+            .ToList();
+        _reservablePeers = (await NodeRepository.GetAllForSelection())
+            .Where(x => x.Id != node.Id)
+            .ToList();
 
         if (_nodeLiquidityModal != null) await _nodeLiquidityModal.Show();
     }
@@ -1417,6 +1481,12 @@
                 (await SwapOutRepository.GetInFlightSwapsByNode(_selectedNodeForLiquidity.Id)).Any(s => s.Provider == SwapProvider.Spark))
             {
                 ToastService.ShowError("The node has a Spark swap in flight: change its Spark wallet once the swap finishes");
+                return;
+            }
+
+            if (ValidationHelper.ValidateReservedChannelOpenPeers(_reservedPeers, _selectedNodeForLiquidity.Id) is { } reservedPeersError)
+            {
+                ToastService.ShowError(reservedPeersError);
                 return;
             }
 
@@ -1453,6 +1523,14 @@
             _selectedNodeForLiquidity.AutoChannelOpenSizeSats = _channelOpenSizeSats > 0 ? _channelOpenSizeSats : null;
 
             _selectedNodeForLiquidity.UpdateDatetime = DateTimeOffset.Now;
+            // Saved first: if it fails nothing is saved, and the edits stay on screen for another Save.
+            var (reservedPeersSaved, _) = await ReservedChannelOpenPeerRepository.ReplaceForNode(_selectedNodeForLiquidity.Id, _reservedPeers);
+            if (!reservedPeersSaved)
+            {
+                ToastService.ShowError("Could not save the reserved peers");
+                return;
+            }
+
             var updateResult = NodeRepository.Update(_selectedNodeForLiquidity);
             
             if (!updateResult.Item1)
@@ -1487,6 +1565,8 @@
             _selectedNodeForLiquidity.FundsDestinationWalletId = walletId;
         }
     }
+
+    private void AddReservedPeer() => _reservedPeers.Add(new ReservedChannelOpenPeer { BudgetPct = 10 });
 
     private void OnSelectedAutoChannelOpenWalletChanged(int walletId)
     {

@@ -235,6 +235,22 @@ namespace NodeGuard.Data.Repositories
                 .SumAsync(x => (long?)x.SatsAmount) ?? 0;
         }
 
+        public async Task<Dictionary<string, long>> GetOpenSatsCommittedByPeerSince(int sourceNodeId, DateTimeOffset since)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.ChannelOperationRequests
+                .Where(x => x.SourceNodeId == sourceNodeId
+                            && x.RequestType == OperationRequestType.Open
+                            && x.CreationDatetime >= since
+                            && x.Status != ChannelOperationRequestStatus.Cancelled
+                            && x.Status != ChannelOperationRequestStatus.Rejected
+                            && x.Status != ChannelOperationRequestStatus.Failed)
+                .GroupBy(x => x.DestNode != null ? x.DestNode.PubKey : "")
+                .Select(g => new { PubKey = g.Key, Sats = g.Sum(x => x.SatsAmount) })
+                .ToDictionaryAsync(x => x.PubKey, x => x.Sats);
+        }
+
         public async Task<List<ChannelOperationRequest>> GetPendingRequests()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

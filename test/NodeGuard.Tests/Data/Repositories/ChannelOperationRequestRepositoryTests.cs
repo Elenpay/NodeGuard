@@ -188,4 +188,40 @@ public class ChannelOperationRequestRepositoryTests
         // Assert
         result.Should().Be(0);
     }
+
+    [Fact]
+    public async Task GetOpenSatsCommittedByPeerSince_SplitsTheLiveOpensByTheirPeer()
+    {
+        // Arrange
+        var dbContextFactory = SetupDbContextFactory();
+        await using var context = await dbContextFactory.Object.CreateDbContextAsync();
+        var now = DateTimeOffset.UtcNow;
+
+        await context.Nodes.AddRangeAsync(
+            new Node { Id = 50, PubKey = "03loop", Name = "loop" },
+            new Node { Id = 51, PubKey = "03peer", Name = "peer" });
+        var toLoop = Committed(1, 100, ChannelOperationRequestStatus.Pending, now);
+        toLoop.DestNodeId = 50;
+        var toLoopAgain = Committed(1, 200, ChannelOperationRequestStatus.OnChainConfirmed, now);
+        toLoopAgain.DestNodeId = 50;
+        var toPeer = Committed(1, 400, ChannelOperationRequestStatus.Pending, now);
+        toPeer.DestNodeId = 51;
+        var failedToPeer = Committed(1, 800, ChannelOperationRequestStatus.Failed, now);
+        failedToPeer.DestNodeId = 51;
+        var noPeer = Committed(1, 1600, ChannelOperationRequestStatus.Pending, now);
+        noPeer.DestNodeId = null;
+        await context.ChannelOperationRequests.AddRangeAsync(toLoop, toLoopAgain, toPeer, failedToPeer, noPeer);
+        await context.SaveChangesAsync();
+
+        // Act
+        var result = await BudgetSut(dbContextFactory).GetOpenSatsCommittedByPeerSince(1, now.AddDays(-1));
+
+        // Assert
+        result.Should().BeEquivalentTo(new Dictionary<string, long>
+        {
+            ["03loop"] = 300,
+            ["03peer"] = 400,
+            [""] = 1600,
+        });
+    }
 }

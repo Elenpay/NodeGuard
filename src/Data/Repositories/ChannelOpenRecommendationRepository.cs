@@ -51,7 +51,8 @@ public class ChannelOpenRecommendationRepository : IChannelOpenRecommendationRep
 
         return await context.ChannelOpenRecommendations
             .Where(x => x.NodeId == nodeId && x.Status == ChannelOpenRecommendationStatus.Open)
-            .OrderByDescending(x => x.EarnedFeeSats)
+            .OrderByDescending(x => x.IsReservedPeer)
+            .ThenByDescending(x => x.EarnedFeeSats)
             .ToListAsync();
     }
 
@@ -121,6 +122,7 @@ public class ChannelOpenRecommendationRepository : IChannelOpenRecommendationRep
         to.SuggestedCapacitySats = from.SuggestedCapacitySats;
         to.InheritedFeeRatePpm = from.InheritedFeeRatePpm;
         to.InheritedBaseFeeMsat = from.InheritedBaseFeeMsat;
+        to.IsReservedPeer = from.IsReservedPeer;
         to.LastEvidenceAt = from.LastEvidenceAt;
     }
 

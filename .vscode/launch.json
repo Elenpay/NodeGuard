@@ -61,7 +61,11 @@
               "ROUTING_ENGINE_ENABLED": "true",
               "AUTO_CHANNEL_OPEN_ENABLED": "true",
               "AUTO_CHANNEL_OPEN_MIN_EARNED_FEE_SATS": "1",
-              "AUTO_CHANNEL_OPEN_MIN_REFUSALS": "3"
+              "AUTO_CHANNEL_OPEN_MIN_REFUSALS": "1",
+              "AUTO_CHANNEL_OPEN_LOOKBACK_DAYS": "30",
+              "AUTO_CHANNEL_OPEN_SHORTAGE_HOURS": "24",
+              "AUTO_CHANNEL_OPEN_LOW_OUTBOUND_PCT": "50",
+              "AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS": "1"
             },
             "sourceFileMap": {
                 "/Views": "${workspaceFolder}/Views"

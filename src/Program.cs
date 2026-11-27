@@ -131,6 +131,7 @@ namespace NodeGuard
             builder.Services.AddTransient<IForwardingHtlcEventRepository, ForwardingHtlcEventRepository>();
             builder.Services.AddTransient<IChannelRoutingStateRepository, ChannelRoutingStateRepository>();
             builder.Services.AddTransient<IChannelOpenRecommendationRepository, ChannelOpenRecommendationRepository>();
+            builder.Services.AddTransient<IReservedChannelOpenPeerRepository, ReservedChannelOpenPeerRepository>();
             builder.Services.AddTransient<IChannelFeeStateRepository, ChannelFeeStateRepository>();
             builder.Services.AddTransient<ISparkSignerIdentityRepository, SparkSignerIdentityRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
